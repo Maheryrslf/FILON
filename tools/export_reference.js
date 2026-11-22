@@ -53,13 +53,24 @@ const code = [
   grab('const PAL=[', '];'), grab('const BEDP='), grab('const hexRgb='), grab('const ORGB='), grab('let chunks=new Map()'), grab('const PX=4'),
   grab('const tileAt='), grab('const tileAt0='), grabFn('function nh('), grabFn('function vnoise('), grabFn('function fbm('),
   grabFn('function texel('), grabFn('function shade('), grabFn('function buildChunk('),
-  // bouchons : ni affichage ni son ; on enregistre l'XP et les pépites libérées ; un canevas réduit à son tableau de pixels
-  'let T, T0, S={tal:{luck:0}}, P={x:-99,y:-99}, xp=0, freed=[];',
-  'function paint(){} function recolorTile(){} function burst(){} function sfx(){}',
+  // foreuse
+  grab('const st={', '};'), grab('const P={'), grab('let running=false'), grab('const D45='),
+  grab('const onDeck='), grab('const hookedBase='), grab('const atBase='), grab('const inDock='),
+  grab('const boxHits='), grabFn('function stepUp('), grabFn('function moveBox('), grabFn('function boxIn('), grabFn('function toSpawn('),
+  grabFn('function hurt('), grabFn('function strand('), grabFn('function groundSlope('), grabFn('function aimHead('),
+  grabFn('function updPlayer('), grabFn('function armBack('), grabFn('function updArm('), grabFn('function afterMove('), grabFn('function explore('),
+  // bouchons : ni affichage ni son ; on enregistre l'XP et les pépites libérées ; un canevas réduit à son tableau de pixels ;
+  // commandes de la foreuse scriptées (pas de souris réelle, ni créature, ni bras)
+  'let T, T0, E, xp=0, freed=[], bosses=[], bullets=[], parts=[], nuggets=[];',
+  'let S={up:{power:0,blade:0,speed:0,tank:0,hull:0,cargo:0,light:0,radar:0,smelt:0,arm:0},tal:{pros:0,luck:0,turbo:0,eco:0,armor:0},cargo:{},maxDepth:0,seenL:0,fallTip:0};',
+  'function paint(){} function recolorTile(){} function burst(){} function sfx(){} function vib(){} function toast(){} function shake(){}',
+  'function save(){} function float(){} function resetBoss(){} function tileColor(){}',
   'function addXp(n){xp+=n} function spawnNugget(id,x,y){freed.push([id,x,y])}',
+  'const cur={ix:0,iy:0,c:null,drill:false};',
+  'const inputDir=()=>[cur.ix,cur.iy], cursorVec=()=>cur.c, digOn=()=>cur.drill, grabOn=()=>false, foeNear=()=>null, bossInFront=()=>null;',
   'const document={createElement:()=>({getContext:()=>({createImageData:(w,h)=>({data:new Uint8ClampedArray(w*h*4)})})})};',
-  ';({gen, W, H, chamber, initMask, digAt, setHatch, buildChunk, setT:(t)=>{T=t;T0=t.slice()}, setTexSeed:(s)=>{texSeed=s},',
-  '   getM:()=>M, getR:()=>R, getT:()=>T, getXp:()=>xp, freed})',
+  ';({gen, W, H, SURF, PH, chamber, initMask, digAt, setHatch, buildChunk, setT:(t)=>{T=t;T0=t.slice()}, setTexSeed:(s)=>{texSeed=s},',
+  '   getM:()=>M, getR:()=>R, getT:()=>T, getXp:()=>xp, freed, S, P, st, cur, updPlayer, setE:(e)=>{E=e}, getE:()=>E, tick:(dt)=>{time+=dt}})',
 ].join('\n');
 const ref = eval(code); // eslint-disable-line no-eval
 
@@ -115,4 +126,42 @@ for (const seed of [1, 123456789, 2147483647]) {
   fs.writeFileSync(path.join(outDir, 'chunks_1.txt'), list.map(([cx, cy]) => `${cx} ${cy}`).join('\n') + '\n');
   fs.writeFileSync(path.join(outDir, 'chunks_1.bin'), Buffer.concat(bufs));
   console.log(`textures, graine 1 : ${list.length} blocs de ${bufs[0].length} octets`);
+}
+
+// 4. Parcours de la foreuse, image par image, sur un monde neuf de la graine 1
+{
+  const w = ref.gen(1);
+  ref.setT(w.t);
+  ref.initMask(null);
+  const E = new Uint8Array(ref.W * ref.H);
+  for (let x = 0; x < ref.W; x++) E[ref.SURF * ref.W + x] = 1;
+  ref.setE(E);
+  const { P, S, st, cur } = ref;
+  S.up.power = 2;
+  P.x = 17.11; P.y = ref.SURF - ref.PH - 0.001; P.fuel = st.fuel(); P.hull = st.hull();
+  const dt = 1 / 60;
+  // [images, ix, iy, curseur (dx, dy) ou null, forage]
+  const segs = [
+    [30, 0, 0, null, false],            // repos au sol
+    [120, 0, 0, [0, 1], true],          // curseur sous la foreuse, forage : tête à −45°, trou devant
+    [240, 1, 1, [0.707, 0.707], true],  // rampe en descendant vers la droite
+    [60, 0, -1, [0, -1], false],        // propulseur
+    [120, -1, 0, [-1, 0], true],        // demi-tour et forage vers la gauche
+    [60, 0, 0, null, false],            // repos
+    [60, 1, 0, null, false],            // roule vers la droite
+  ];
+  const out = [`stats ${st.dps()} ${st.spd()} ${st.fuel()} ${st.hull()} ${st.light()} ${st.arm()}`];
+  for (const [n, ix, iy, c, drill] of segs) out.push(`seg ${n} ${ix} ${iy} ${c ? 1 : 0} ${c ? c[0] : 0} ${c ? c[1] : 0} ${drill ? 1 : 0}`);
+  let frame = 0;
+  for (const [n, ix, iy, c, drill] of segs) {
+    Object.assign(cur, { ix, iy, c: c ? [c[0], c[1], Math.hypot(c[0], c[1])] : null, drill });
+    for (let k = 0; k < n; k++) {
+      ref.tick(dt);
+      ref.updPlayer(dt);
+      out.push(`f ${++frame} ${P.x} ${P.y} ${P.vx} ${P.vy} ${+P.grounded} ${P.side} ${P.ang} ${P.th} ${P.tilt} ${P.yaw} ${P.fuel} ${P.hull} ${+P.thrust} ${+P.sliding} ${P.digAcc}`);
+    }
+  }
+  out.push(`fnv mask ${fnv(ref.getM())}`, `fnv explored ${fnv(ref.getE())}`);
+  fs.writeFileSync(path.join(outDir, 'drill_1.txt'), out.join('\n') + '\n');
+  console.log(`foreuse, graine 1 : ${frame} images, arrivée en (${P.x.toFixed(2)}, ${P.y.toFixed(2)}), carburant ${P.fuel.toFixed(1)}`);
 }

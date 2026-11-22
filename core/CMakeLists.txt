@@ -3,6 +3,8 @@ add_library(filon-core STATIC
   src/world.cpp
   src/terrain.cpp
   src/texture.cpp
+  src/physics.cpp
+  src/drill.cpp
 )
 target_include_directories(filon-core PUBLIC include)
 

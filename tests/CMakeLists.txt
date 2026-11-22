@@ -16,3 +16,8 @@ add_executable(filon-test-texture test_texture.cpp)
 target_link_libraries(filon-test-texture PRIVATE filon-core)
 target_compile_definitions(filon-test-texture PRIVATE FILON_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data")
 add_test(NAME parite-textures COMMAND filon-test-texture)
+
+add_executable(filon-test-drill test_drill.cpp)
+target_link_libraries(filon-test-drill PRIVATE filon-core)
+target_compile_definitions(filon-test-drill PRIVATE FILON_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data")
+add_test(NAME parite-foreuse COMMAND filon-test-drill)
