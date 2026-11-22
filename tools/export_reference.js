@@ -49,11 +49,17 @@ const code = [
   grab('const cellSolid='), grab('const cellAt='), grabFn('function boxHitsWH('),
   grabFn('function initMask('), grab('const isHatch='), grabFn('function setHatch('), grabFn('function packMask('),
   grabFn('function digAt('), grabFn('function removeCell('),
-  // bouchons : ni affichage ni son ; on enregistre l'XP et les pépites libérées
-  'let T, S={tal:{luck:0}}, P={x:-99,y:-99}, xp=0, freed=[];',
+  // textures
+  grab('const PAL=[', '];'), grab('const BEDP='), grab('const hexRgb='), grab('const ORGB='), grab('let chunks=new Map()'), grab('const PX=4'),
+  grab('const tileAt='), grab('const tileAt0='), grabFn('function nh('), grabFn('function vnoise('), grabFn('function fbm('),
+  grabFn('function texel('), grabFn('function shade('), grabFn('function buildChunk('),
+  // bouchons : ni affichage ni son ; on enregistre l'XP et les pépites libérées ; un canevas réduit à son tableau de pixels
+  'let T, T0, S={tal:{luck:0}}, P={x:-99,y:-99}, xp=0, freed=[];',
   'function paint(){} function recolorTile(){} function burst(){} function sfx(){}',
   'function addXp(n){xp+=n} function spawnNugget(id,x,y){freed.push([id,x,y])}',
-  ';({gen, W, H, chamber, initMask, digAt, setHatch, setT:(t)=>{T=t}, getM:()=>M, getR:()=>R, getT:()=>T, getXp:()=>xp, freed})',
+  'const document={createElement:()=>({getContext:()=>({createImageData:(w,h)=>({data:new Uint8ClampedArray(w*h*4)})})})};',
+  ';({gen, W, H, chamber, initMask, digAt, setHatch, buildChunk, setT:(t)=>{T=t;T0=t.slice()}, setTexSeed:(s)=>{texSeed=s},',
+  '   getM:()=>M, getR:()=>R, getT:()=>T, getXp:()=>xp, freed})',
 ].join('\n');
 const ref = eval(code); // eslint-disable-line no-eval
 
@@ -101,4 +107,12 @@ for (const seed of [1, 123456789, 2147483647]) {
   out.push(`fnv hatch_closed ${fnv(ref.getM())}`);
   fs.writeFileSync(path.join(outDir, 'dig_1.txt'), out.join('\n') + '\n');
   console.log(`forage, graine 1 : ${out.filter((l) => l.startsWith('dig')).length} coups de foret, ${ref.freed.length} pépites, xp ${ref.getXp()}`);
+
+  // 3. Blocs de texture, après ce forage (galeries creusées, filons extraits, trappe fermée)
+  ref.setTexSeed(1 % 9973 + 1);
+  const list = [[0, 0], [1, 0], [2, 0], [1, 1], [1, 18], [2, 18], [0, 30], [2, 45]];
+  const bufs = list.map(([cx, cy]) => Buffer.from(ref.buildChunk(cx, cy).img.data));
+  fs.writeFileSync(path.join(outDir, 'chunks_1.txt'), list.map(([cx, cy]) => `${cx} ${cy}`).join('\n') + '\n');
+  fs.writeFileSync(path.join(outDir, 'chunks_1.bin'), Buffer.concat(bufs));
+  console.log(`textures, graine 1 : ${list.length} blocs de ${bufs[0].length} octets`);
 }

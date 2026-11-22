@@ -6,6 +6,8 @@
 
 namespace filon {
 
+constexpr int TS = 32;  // taille d'une case en pixels du monde (avant mise à l'échelle)
+
 // Dimensions, en cases
 constexpr int W = 36;                 // largeur
 constexpr int SURF = 6;               // première rangée de terre (0..5 = ciel)
