@@ -224,7 +224,7 @@ C++ : `imul` = multiplication `int32_t` avec débordement (passer par `uint32_t`
 - Fin de charge (mur ou délai) ou atterrissage (`vy > 4` au contact du sol) → `roam` (durée `max(0.8, 1.6 + 1.2·rand − 0.15L)`) + éclats (`shots`, +4 si PV < 50 %) en éventail vers le haut (angles de −0.12π à −0.88π), vitesse 6–8.5, gravité 9, dégâts 0.6×, durée 4 s, détruits par un pixel plein, touchent la foreuse à moins de 0.5 case.
 - Contact gardien–foreuse : distance < 1.65 case. Coup de foret possible à moins de 2.05 case, dans l'axe de la tête (cosinus > 0.35), délai 0.3 s.
 - Mort → sceau de la couche changé en ROCK, récompense, sauvegarde.
-- C++ (`core/creatures`) : mêmes règles, hasard tiré d'un `Rng` dans le même ordre que `Math.random`. Test `parite-creatures` : 2400 images comparées à la version JS avec `Math.random` remplacé par `rng(4242)` (larve qui mord puis meurt, réveil, charges, sauts, éclats, remise en place, défaite et sceau brisé). Particularité gardée : un éclat qui détruit la foreuse n'efface pas les autres éclats (`bullets = bullets.filter(...)` remplace l'effacement fait par `strand`). Affichage : créatures et sceaux seulement sur les cases explorées, tant que le halo de lumière n'est pas porté.
+- C++ (`core/creatures`) : mêmes règles, hasard tiré d'un `Rng` dans le même ordre que `Math.random`. Test `parite-creatures` : 2400 images comparées à la version JS avec `Math.random` remplacé par `rng(4242)` (larve qui mord puis meurt, réveil, charges, sauts, éclats, remise en place, défaite et sceau brisé). Particularité gardée : un éclat qui détruit la foreuse n'efface pas les autres éclats (`bullets = bullets.filter(...)` remplace l'effacement fait par `strand`).
 
 ### 5.3 Pépites (L440–454)
 - Apparition au pixel retiré, `vx ∈ ±1.25`, `vy ∈ [−4, −2]` ; 200 max.
@@ -279,7 +279,9 @@ Prospecteur (+8 % de valeur), Filon double (+6 % de chance), Turbo (+6 % de fora
 - **Textures de terre** en blocs de 12 × 8 cases (96 × 64 pixels de terre), générées à la demande (budget ~14 ms par image, 30 blocs en cache), affichées sans lissage (pixels nets).
 - Couleur d'un pixel (`texel`) : frontières de matériau ondulées (fbm, ±22 px), palette par couche et matériau (`PAL` L139), strates pour le meuble, fissures pour la roche, grain pour la roche dure, braises en couche 3, pépites incrustées pour les minerais de `T`, relief, variation par pixel ±12 % quantifiée par paliers de 0.1, herbe sur la rangée `SURF`.
 - Ombrage selon le masque : pixel plein exposé par le haut ×1.18 ; pixel creusé ×0.27 (×0.17 sous un surplomb).
-- Brouillard : case non explorée en noir. Lumière : dégradé radial de rayon `light`.
+- Brouillard : case non explorée en noir. Lumière : dégradé radial de rayon `light`, sous la surface seulement : transparent jusqu'à 0.25·r, opacité 0.2 à 0.7·r, 0.66 au-delà de r (0.45 pendant un combat de gardien). Créatures et gardiens dessinés avant le halo, même sur les cases inexplorées ; sceaux et lave seulement sur les cases explorées.
+- Radar : losanges sur les minerais entre `light − 0.5` et `3 + 2·niveau` cases, par-dessus le halo.
+- C++ (`app/src/scene_view`) : surface, base, lave, radar et halo, dans le même ordre que la version JS (décor, terrain, brouillard et lave, créatures, pépites, foreuse, halo, radar, chiffres). Captures : `docs/capture-base.png`, `docs/capture-gardien.png`.
 - Caméra amortie : `1 − e^(−10·dt)` en X, `1 − e^(−6·dt)` en Y, recalage si écart > 6 cases.
 - Échelle : `clamp(min(largeur, hauteur)/(10.5·32), 0.9, 2.2)`.
 

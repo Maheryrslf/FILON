@@ -37,7 +37,6 @@ void drawArm(const filon::Drill& d) {
 void drawDrill(const filon::Drill& d, double time) {
     using namespace filon;
     const float X = static_cast<float>((d.x + PW / 2) * TS), Y = static_cast<float>((d.y + PH + d.vis) * TS);
-    rlDisableBackfaceCulling();  // le retournement (sens de marche) inverse l'ordre des sommets
     rlPushMatrix();
     rlTranslatef(X, Y - 12, 0);
     if (d.side < 0) rlScalef(-1, 1, 1);
@@ -89,5 +88,4 @@ void drawDrill(const filon::Drill& d, double time) {
     DrawCircleV({0, 0}, 2.5f, Color{138, 147, 157, 255});
     rlPopMatrix();
     rlDrawRenderBatchActive();
-    rlEnableBackfaceCulling();
 }

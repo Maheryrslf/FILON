@@ -5,7 +5,8 @@
 // Échap ou B : menu de la base (le jeu est en pause pendant le menu). N deux fois : nouveau monde, progression gardée.
 // Sauvegarde au format de la version JS dans $XDG_DATA_HOME/filon/save.json (sinon ~/.local/share/filon/save.json) :
 // toutes les 5 s de jeu, à la base, après un achat ou une vente, à la fermeture du menu et de la fenêtre.
-// --capture / --capture-menu / --capture-boss fichier.png : parcours d'essai (ou salle du 2e gardien), image de l'écran, puis fin.
+// --capture / --capture-menu / --capture-boss / --capture-base fichier.png : parcours d'essai (ou salle du 2e gardien, ou pont
+// de la base), image de l'écran, puis fin.
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -28,6 +29,7 @@
 #include "filon/core/texture.hpp"
 #include "raylib.h"
 #include "rlgl.h"
+#include "scene_view.hpp"
 #include "terrain_view.hpp"
 
 namespace {
@@ -128,9 +130,10 @@ void bar(int x, int y, int w, double frac, Color c, const std::string& label) {
 
 int main(int argc, char** argv) {
     const std::string mode = argc == 3 ? argv[1] : "";
-    const char* capture = (mode == "--capture" || mode == "--capture-menu" || mode == "--capture-boss") ? argv[2] : nullptr;
+    const char* capture = (mode == "--capture" || mode == "--capture-menu" || mode == "--capture-boss" || mode == "--capture-base") ? argv[2] : nullptr;
     SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT);
     InitWindow(1280, 720, "Filon");
+    rlDisableBackfaceCulling();  // jeu en 2D : triangles tracés dans les deux sens (retournements, dégradés)
     SetExitKey(KEY_NULL);  // Échap ouvre le menu de la base
     SetTargetFPS(60);
 
@@ -167,7 +170,8 @@ int main(int argc, char** argv) {
         game->drill.x = 17.11;
         game->drill.y = SURF - PH - .001;
     }
-    const bool bossTest = mode == "--capture-boss";
+    const bool bossTest = mode == "--capture-boss", baseTest = mode == "--capture-base";
+    if (baseTest) spawnOnDeck(game->drill, drillStats(game->eco));
     if (bossTest) {  // dans la salle du 2e gardien, coque renforcée, sans bouger
         const Chamber c1 = chamber(1);
         game->drill.x = c1.x1 + 1.5;
@@ -238,7 +242,7 @@ int main(int argc, char** argv) {
             if (!in.ix && !in.iy && in.cursor && std::hypot(in.cdx, in.cdy) > .6) octant(in.cdx, in.cdy, in.ix, in.iy);
             in.drill = (!overUi && IsMouseButtonDown(MOUSE_BUTTON_LEFT)) || IsKeyDown(KEY_SPACE);
             in.grab = (!overUi && IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) || IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
-            if (bossTest) in = DrillInput{};
+            if (bossTest || baseTest) in = DrillInput{};
             else if (capture) {  // parcours d'essai : rampe vers la droite en forant, puis bras d'accroche vers le haut à gauche
                 in = DrillInput{};
                 in.cursor = true;
@@ -353,11 +357,16 @@ int main(int argc, char** argv) {
         ClearBackground(Color{13, 11, 10, 255});
         const float skyBottom = static_cast<float>((SURF * TS - camY) * scale);
         if (skyBottom > 0) DrawRectangleGradientV(0, 0, GetScreenWidth(), static_cast<int>(skyBottom), Color{47, 93, 138, 255}, Color{242, 183, 122, 255});
-        game->view.draw(static_cast<float>(camX), static_cast<float>(camY), scale, GetScreenWidth(), GetScreenHeight());
-
         Camera2D cam{};
         cam.target = {static_cast<float>(camX), static_cast<float>(camY)};
         cam.zoom = scale;
+        if (skyBottom > 0) {  // décor de la surface et base flottante, derrière le terrain
+            BeginMode2D(cam);
+            drawSurface(camX, vwT, time, game->terrain.hatchOpen(), !eco.furnace.queue.empty());
+            EndMode2D();
+        }
+        game->view.draw(static_cast<float>(camX), static_cast<float>(camY), scale, GetScreenWidth(), GetScreenHeight());
+
         BeginMode2D(cam);
         // brouillard : cases jamais éclairées
         const int x0 = std::max(0, static_cast<int>(camX / TS)), x1 = std::min(W - 1, static_cast<int>((camX + vwT) / TS) + 1);
@@ -365,10 +374,16 @@ int main(int argc, char** argv) {
         for (int y = y0; y <= y1; ++y)
             for (int x = x0; x <= x1; ++x)
                 if (!game->explored[static_cast<std::size_t>(y * W + x)]) DrawRectangle(x * TS, y * TS, TS, TS, Color{5, 4, 4, 255});
-        // pont de la base, d'après le masque
-        for (int sx = static_cast<int>(DX1 * 8); sx < DX2 * 8; ++sx)
-            for (int sy = static_cast<int>(DECK * 8) - 8; sy < DECK * 8 + 4; ++sy)
-                if (game->terrain.cellSolid(sx, sy)) DrawRectangle(sx * PX, sy * PX, PX, PX, Color{90, 99, 108, 255});
+        drawLava(game->world, game->explored, x0, x1, y0, y1, time);
+        drawSeals(game->world, game->explored, x0, x1, y0, y1, time);
+        for (const Foe& fo : game->creatures.foes)
+            if (fo.alive && fo.x >= x0 - 1 && fo.x <= x1 + 1 && fo.y >= y0 - 1 && fo.y <= y1 + 1) drawFoe(fo, d, time);
+        bool bossAwake = false;
+        for (const Boss& bo : game->creatures.bosses) {
+            if (!bo.dead && bo.y >= y0 - 3 && bo.y <= y1 + 3) drawBoss(bo, d, time);
+            bossAwake = bossAwake || bo.active;
+        }
+        drawBullets(game->creatures);
         for (const Nugget& nu : game->nuggets) {  // pépites : 2 x 2 pixels de terre, reflet et ombre
             const OreDef& o = ORES[nu.id - ORE_FIRST];
             const float X = std::round(static_cast<float>(nu.x * TS) / 2) * 2 - 4, Y = std::round(static_cast<float>(nu.y * TS) / 2) * 2 - 4;
@@ -376,19 +391,15 @@ int main(int argc, char** argv) {
             DrawRectangleRec({X, Y, 4, 4}, Color{static_cast<unsigned char>(o.glint >> 16), static_cast<unsigned char>(o.glint >> 8), static_cast<unsigned char>(o.glint), 255});
             DrawRectangleRec({X + 4, Y + 4, 4, 4}, Color{0, 0, 0, 89});
         }
-        // shortcut: sans le halo d'obscurité de la version JS, on cache ce qui est sur une case inexplorée ; à revoir avec l'éclairage
-        auto seen = [&](double x, double y) {
-            const int tx = static_cast<int>(std::floor(x)), ty = static_cast<int>(std::floor(y));
-            return tx >= 0 && tx < W && ty >= 0 && ty < H && game->explored[static_cast<std::size_t>(ty * W + tx)];
-        };
-        drawSeals(game->world, game->explored, x0, x1, y0, y1, time);
-        for (const Foe& fo : game->creatures.foes)
-            if (fo.alive && fo.x >= x0 - 1 && fo.x <= x1 + 1 && fo.y >= y0 - 1 && fo.y <= y1 + 1 && seen(fo.x + FW / 2, fo.y + FH / 2)) drawFoe(fo, d, time);
-        for (const Boss& bo : game->creatures.bosses)
-            if (!bo.dead && bo.y >= y0 - 3 && bo.y <= y1 + 3 && (bo.active || seen(bo.x, bo.y))) drawBoss(bo, d, time);
-        drawBullets(game->creatures);
         drawArm(d);
         drawDrill(d, time);
+        EndMode2D();
+
+        // obscurité autour de la foreuse, sous la surface, puis radar et chiffres par-dessus
+        drawDarkness(static_cast<float>(((d.x + PW / 2) * TS - camX) * scale), static_cast<float>(((d.y + PH / 2) * TS - camY) * scale),
+                     std::max(0.f, skyBottom), static_cast<float>(stats.light * TS * scale), bossAwake);
+        BeginMode2D(cam);
+        drawRadar(game->world, d, static_cast<int>(effects(eco).radar), stats.light, time);
         for (const Float& fl : floats) {
             const unsigned char a = static_cast<unsigned char>(255 * std::clamp(fl.life * 1.5, 0.0, 1.0));
             const int fx = static_cast<int>(fl.x * TS) - MeasureText(fl.text.c_str(), 12) / 2, fy = static_cast<int>(fl.y * TS);

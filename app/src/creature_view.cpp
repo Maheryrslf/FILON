@@ -47,7 +47,6 @@ void drawFoe(const Foe& f, const Drill& d, double time) {
     const float X = static_cast<float>((f.x + FW / 2) * TS);
     const float Y = static_cast<float>((f.y + FH) * TS - 10 + (f.vx != 0 ? std::sin(time * 12 + f.i) * 1.2 : 0));
     const Color col = f.flash > 0 ? WHITE : hex(F.color);
-    rlDisableBackfaceCulling();
     rlPushMatrix();
     rlTranslatef(X, Y, 0);
     if (d.x < f.x) rlScalef(-1, 1, 1);  // regarde la foreuse
@@ -83,7 +82,6 @@ void drawFoe(const Foe& f, const Drill& d, double time) {
         eyes(8, 2);
     }
     rlPopMatrix();
-    rlEnableBackfaceCulling();
     if (f.hp < F.hp) {
         DrawRectangleRec({X - 12, Y - 19, 24, 4}, Color{0, 0, 0, 153});
         DrawRectangleRec({X - 12, Y - 19, static_cast<float>(24 * f.hp / F.hp), 4}, Color{255, 90, 74, 255});
@@ -102,7 +100,6 @@ void drawBoss(const Boss& b, const Drill& d, double time) {
     const float a = static_cast<float>(std::atan2(d.y + PH / 2 - b.y, d.x + PW / 2 - b.x));
     const float tm = static_cast<float>(time);
     DrawCircleGradient({X, Y}, R * 1.9f, hex(B.color, 102), hex(B.color, 0));
-    rlDisableBackfaceCulling();
     rlPushMatrix();
     rlTranslatef(X, Y, 0);
     rlPushMatrix();
@@ -157,7 +154,6 @@ void drawBoss(const Boss& b, const Drill& d, double time) {
         eyes(R * .35f, R * .22f);
     }
     rlPopMatrix();
-    rlEnableBackfaceCulling();
 }
 
 void drawBullets(const Creatures& c) {
