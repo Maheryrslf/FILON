@@ -300,7 +300,7 @@ JSON, clé `filon-save-v1`, version `v:1`.
 | `tiles` (base64 de `T`), `exp` (base64 de `E`), `mask` (base64 du masque en bits, 1 bit par pixel) | monde |
 | `nug[[id,x,y],...]` | pépites au sol |
 **Nouveau monde** : nouvelle graine, `dead`, `boss`, `seenL`, position, monde et pépites remis à zéro ; le reste est conservé.
-C++ : même structure (JSON ou binaire). Un import de l'ancienne sauvegarde est possible, puisque tous les champs sont documentés ici.
+C++ (`core/save`) : même JSON, champs dans le même ordre, écrit octet pour octet comme `JSON.stringify` (nombres au format JS, pépites arrondies comme `toFixed(2)`, moitiés exactes en s'éloignant de zéro). Fichier `$XDG_DATA_HOME/filon/save.json` (sinon `~/.local/share/filon/save.json`), écrit à côté puis renommé ; un fichier illisible est renommé `save.json.illisible`, jamais écrasé. Valeurs hors bornes ramenées dans les limites (niveaux d'amélioration et de talent). Test : `parite-sauvegarde` relit une vraie sauvegarde JS et la réécrit à l'identique.
 
 ---
 

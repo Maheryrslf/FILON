@@ -11,13 +11,15 @@ bool isHatchCol(int sx) { return sx >= GX1 * 8 && sx < GX2 * 8; }
 
 int Terrain::fl8(double v) { return static_cast<int>(std::floor(v * 8)); }
 
-Terrain::Terrain(World& world) : w_(world), m_(static_cast<std::size_t>(MW * MH), 0), r_(static_cast<std::size_t>(W * H), 0) {
+Terrain::Terrain(World& world, const std::vector<std::uint8_t>& bits)
+    : w_(world), m_(static_cast<std::size_t>(MW * MH), 0), r_(static_cast<std::size_t>(W * H), 0) {
+    const bool packed = bits.size() == static_cast<std::size_t>(MW * MH / 8);
     for (int sy = SURF * 8; sy < MH; ++sy) {
         const int ty = sy >> 3;
         for (int sx = 0; sx < MW; ++sx) {
-            const std::size_t ti = static_cast<std::size_t>(ty * W + (sx >> 3));
-            if (solid(w_.tiles[ti])) {
-                m_[static_cast<std::size_t>(sy * MW + sx)] = 1;
+            const std::size_t ti = static_cast<std::size_t>(ty * W + (sx >> 3)), i = static_cast<std::size_t>(sy * MW + sx);
+            if (packed ? (bits[i >> 3] >> (i & 7)) & 1 : solid(w_.tiles[ti])) {
+                m_[i] = 1;
                 ++r_[ti];
             }
         }
@@ -29,6 +31,13 @@ Terrain::Terrain(World& world) : w_(world), m_(static_cast<std::size_t>(MW * MH)
     const int rails[4] = {static_cast<int>(DX1 * 8), static_cast<int>(DX1 * 8) + 1, static_cast<int>(DX2 * 8) - 2, static_cast<int>(DX2 * 8) - 1};
     for (int sy = DECK8 - 8; sy < DECK8; ++sy)
         for (int sx : rails) m_[static_cast<std::size_t>(sy * MW + sx)] = 1;
+}
+
+std::vector<std::uint8_t> Terrain::packMask() const {
+    std::vector<std::uint8_t> b(m_.size() / 8, 0);
+    for (std::size_t i = 0; i < m_.size(); ++i)
+        if (m_[i]) b[i >> 3] = static_cast<std::uint8_t>(b[i >> 3] | 1 << (i & 7));
+    return b;
 }
 
 bool Terrain::cellSolid(int sx, int sy) const {

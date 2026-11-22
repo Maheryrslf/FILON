@@ -1,12 +1,16 @@
 // Filon : la foreuse dans la mine (terrain en pixels, physique, tourelle, forage, pépites, bras d'accroche, économie).
 // Souris : la foreuse suit le curseur ; clic gauche maintenu : forer ; clic droit maintenu : bras d'accroche.
 // Clavier : flèches ou ZQSD pour bouger, Espace pour forer, Maj pour le bras.
-// Échap ou B : menu de la base (le jeu est en pause pendant le menu). N : nouveau monde. Fermer la fenêtre pour quitter.
+// Échap ou B : menu de la base (le jeu est en pause pendant le menu). N deux fois : nouveau monde, progression gardée.
+// Sauvegarde au format de la version JS dans $XDG_DATA_HOME/filon/save.json (sinon ~/.local/share/filon/save.json) :
+// toutes les 5 s de jeu, à la base, après un achat ou une vente, à la fermeture du menu et de la fenêtre.
 // --capture fichier.png / --capture-menu fichier.png : parcours d'essai, image de l'écran, puis fin (vérification automatique).
 #include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <memory>
 #include <string>
 #include <vector>
@@ -17,6 +21,7 @@
 #include "filon/core/economy.hpp"
 #include "filon/core/nuggets.hpp"
 #include "filon/core/random.hpp"
+#include "filon/core/save.hpp"
 #include "filon/core/texture.hpp"
 #include "raylib.h"
 #include "rlgl.h"
@@ -30,23 +35,68 @@ std::int64_t nowMs() {  // horloge réelle, pour la fonderie qui avance aussi je
     return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 }
 
-struct Game {
+std::string savePath() {
+    if (const char* x = std::getenv("XDG_DATA_HOME"); x && *x) return std::string(x) + "/filon/save.json";
+    if (const char* h = std::getenv("HOME"); h && *h) return std::string(h) + "/.local/share/filon/save.json";
+    return "filon-save.json";
+}
+
+World restoredWorld(const SaveData& s) {  // monde régénéré d'après la graine, puis les cases de la sauvegarde
+    World w = generate(s.seed);
+    if (!s.tiles.empty()) w.tiles = s.tiles;
+    return w;
+}
+
+struct Game {  // une partie, restaurée comme boot() en JS
+    std::uint32_t seed;
     World world;
     Terrain terrain;
     TerrainView view;
     std::vector<std::uint8_t> explored;
     Economy eco;
+    Progress prog;
     Drill drill;
     std::vector<Nugget> nuggets;
     Rng rng;  // effets et chance (vitesse des pépites, filon double)
-    explicit Game(std::uint32_t seed)
-        : world(generate(seed)), terrain(world), view(world, terrain, textureSeed(seed)), explored(static_cast<std::size_t>(W * H), 0),
-          rng(seed ^ 0x9e3779b9u) {
+    explicit Game(const SaveData& s)
+        : seed(s.seed), world(restoredWorld(s)), terrain(world, s.mask), view(world, terrain, textureSeed(s.seed)),
+          explored(s.explored.empty() ? std::vector<std::uint8_t>(static_cast<std::size_t>(W * H), 0) : s.explored), eco(s.eco), prog(s.prog),
+          nuggets(s.nuggets), rng(s.seed ^ 0x9e3779b9u) {
         for (int x = 0; x < W; ++x) explored[static_cast<std::size_t>(SURF * W + x)] = 1;
-        eco.furnace.last = nowMs();
-        spawnOnDeck(drill, drillStats(eco));
+        if (!eco.furnace.last) eco.furnace.last = nowMs();
+        const DrillStats st = drillStats(eco);
+        spawnOnDeck(drill, st);
+        if (s.pos && (*s.pos)[1] >= DECK - 3 && !terrain.boxHits((*s.pos)[0], (*s.pos)[1], PW, PH)) {  // sinon retour sur le pont
+            drill.x = (*s.pos)[0];
+            drill.y = (*s.pos)[1];
+        }
+        drill.under = drill.y + PH > SURF + .05;
+        drill.fuel = s.fuel.value_or(st.fuelMax);
+        drill.hull = s.hull.value_or(st.hullMax);
+    }
+    SaveData snapshot() const {
+        SaveData s;
+        s.seed = seed;
+        s.eco = eco;
+        s.prog = prog;
+        s.pos = std::array<double, 2>{drill.x, drill.y};
+        s.fuel = drill.fuel;
+        s.hull = drill.hull;
+        s.tiles = world.tiles;
+        s.explored = explored;
+        s.mask = terrain.packMask();
+        s.nuggets = nuggets;
+        return s;
     }
 };
+
+std::uint32_t randomSeed() { return static_cast<std::uint32_t>(GetRandomValue(0, 2147483646)); }
+
+SaveData freshSave(std::uint32_t seed) {
+    SaveData s;
+    s.seed = seed;
+    return s;
+}
 
 // 8 directions : la plus proche de l'angle (dx, dy)
 void octant(double dx, double dy, int& ix, int& iy) {
@@ -73,18 +123,34 @@ int main(int argc, char** argv) {
     SetExitKey(KEY_NULL);  // Échap ouvre le menu de la base
     SetTargetFPS(60);
 
-    std::uint32_t seed = 1;
-    auto game = std::make_unique<Game>(seed);
-    BaseMenu menu;
-    double camX = 0, camY = 0, time = 0, lastFull = -9;
-    bool camInit = false;
     std::string toast;
     double toastT = 0;
-    int frame = 0;
     auto say = [&](const std::string& m, double t = 2.8) {
         toast = m;
         toastT = t;
     };
+    // le parcours d'essai part toujours du même monde neuf et ne touche pas à la sauvegarde
+    const std::string path = capture ? "" : savePath();
+    std::unique_ptr<Game> game;
+    if (!capture) {
+        if (const auto text = readFile(path)) {
+            if (const auto s = fromJson(*text)) {
+                game = std::make_unique<Game>(*s);
+                say("Partie reprise.");
+            } else {  // illisible : mise de côté plutôt qu'écrasée
+                std::rename(path.c_str(), (path + ".illisible").c_str());
+                say("Sauvegarde illisible, mise de côté (save.json.illisible). Nouvelle partie.", 5);
+            }
+        }
+    }
+    if (!game) game = std::make_unique<Game>(freshSave(capture ? 1 : randomSeed()));
+    auto save = [&] {
+        if (!path.empty() && !writeFileAtomic(path, toJson(game->snapshot()))) say("Impossible d'enregistrer la partie dans " + path, 4);
+    };
+    BaseMenu menu;
+    double camX = 0, camY = 0, time = 0, lastFull = -9, lastSave = 0, confirmWorld = -9;
+    bool camInit = false;
+    int frame = 0;
     if (capture) {  // le parcours d'essai part du sol, pas du pont
         game->drill.x = 17.11;
         game->drill.y = SURF - PH - .001;
@@ -95,11 +161,33 @@ int main(int argc, char** argv) {
         time += dt;
         ++frame;
         if (IsKeyPressed(KEY_N)) {
-            seed = static_cast<std::uint32_t>(GetRandomValue(1, 2147483646));
-            game = std::make_unique<Game>(seed);
-            camInit = false;
+            if (time - confirmWorld < 3) {  // comme newWorld() en JS : garde pièces, améliorations, talents, niveau, soute, lingots et réglages
+                SaveData s = game->snapshot();
+                s.seed = randomSeed();
+                s.prog.dead.clear();
+                s.prog.boss = {};
+                s.prog.seenL = 0;
+                s.pos.reset();
+                s.fuel.reset();
+                s.hull.reset();
+                s.tiles.clear();
+                s.explored.clear();
+                s.mask.clear();
+                s.nuggets.clear();
+                game = std::make_unique<Game>(s);
+                camInit = false;
+                confirmWorld = -9;
+                save();
+                say("Nouveau monde ! Ta progression est gardée.");
+            } else {
+                confirmWorld = time;
+                say("Appuie encore sur N pour un nouveau monde (ta progression est gardée).", 3);
+            }
         }
-        if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_B)) menu.open = !menu.open;
+        if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_B)) {
+            menu.open = !menu.open;
+            if (!menu.open) save();
+        }
         const float scale = std::clamp(std::min(GetScreenWidth(), GetScreenHeight()) / (10.5f * TS), .9f, 2.2f);
         Drill& d = game->drill;
         Economy& eco = game->eco;
@@ -138,6 +226,17 @@ int main(int argc, char** argv) {
             }
 
             updateDrill(d, game->terrain, game->world, game->explored, stats, in, dt, ev);
+            Progress& pr = game->prog;
+            pr.play += dt;
+            if (ev.depth > pr.maxDepth) pr.maxDepth = ev.depth;
+            if (const int L = layerOf(static_cast<int>(std::floor(d.y + PH / 2))); L > pr.seenL) {
+                pr.seenL = L;
+                say("Couche " + std::to_string(L + 1) + " : " + LAYERS[static_cast<std::size_t>(L)].name);
+            }
+            if (ev.fellHard && !pr.fallTip) {
+                pr.fallTip = 1;
+                say("Chute rude : garde le propulseur appuyé pour freiner, ou accroche le bras.");
+            }
             game->view.sync(game->terrain);
             if (const int lv = addXp(eco, game->terrain.xpGained)) say("Niveau " + std::to_string(eco.lvl) + " ! +" + std::to_string(lv) + " point de talent");
             game->terrain.xpGained = 0;
@@ -165,6 +264,10 @@ int main(int argc, char** argv) {
             if (ev.hardRock) say("Roche très dure : améliore ton foret à l'atelier.");
             if (ev.sealBump) say("Roche scellée : bats le gardien de cette couche.");
             if (ev.arrivedAtBase) say("Base : plein et réparations faits. Échap ou B pour vendre et améliorer.");
+            if (ev.arrivedAtBase || time - lastSave > 5) {
+                lastSave = time;
+                save();
+            }
         }
         toastT -= dt;
 
@@ -239,14 +342,19 @@ int main(int argc, char** argv) {
             menu.open = true;
             menu.tab = 2;
         }
-        if (const std::string m = menu.draw(eco, d, base); !m.empty()) say(m);
+        const bool wasOpen = menu.open;
+        if (const std::string m = menu.draw(eco, d, base); !m.empty()) {
+            say(m);
+            save();  // vente, fonte, achat
+        }
+        if (wasOpen && !menu.open) save();
         if (toastT > 0) {
             const int tw = MeasureText(toast.c_str(), 18);
             DrawRectangle(GetScreenWidth() / 2 - tw / 2 - 14, 80, tw + 28, 32, Color{18, 13, 11, 235});
             DrawText(toast.c_str(), GetScreenWidth() / 2 - tw / 2, 87, 18, RAYWHITE);
         }
         if (!menu.open)
-            DrawText("Souris : diriger   Clic gauche / Espace : forer   Clic droit / Maj : bras   Échap / B : base   N : nouveau monde", 12,
+            DrawText("Souris : diriger   Clic gauche / Espace : forer   Clic droit / Maj : bras   Échap / B : base   N N : nouveau monde", 12,
                      GetScreenHeight() - 24, 16, Color{179, 157, 138, 255});
         DrawFPS(GetScreenWidth() - 100, 12);
         const bool shoot = capture && frame == 300;
@@ -258,6 +366,7 @@ int main(int argc, char** argv) {
         if (shoot) break;
     }
 
+    save();
     game.reset();  // libère les textures avant de fermer la fenêtre
     CloseWindow();
     return 0;

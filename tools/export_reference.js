@@ -64,6 +64,7 @@ const code = [
   grab('const UPG={', '};'), grab('const TAL={', '};'), grab('const fmt='), grab('const cargoVal='), grab('const barsVal='),
   grab('const cost='), grab('const xpNeed='), grab('const points='), grabFn('function addXp(').replace('function addXp(', 'function realAddXp('),
   grabFn('function sellAll('), grabFn('function smeltAll('), grabFn('function buy('), grabFn('function updFurnace('),
+  grab('const b64='), grabFn('function fresh('), grabFn('function save(').replace('function save(', 'function realSave('),
   // bouchons : ni affichage ni son ; on enregistre l'XP et les pépites libérées ; un canevas réduit à son tableau de pixels ;
   // commandes de la foreuse scriptées (pas de souris réelle, ni créature) ; le bras vise le curseur scripté comme armAim()
   'let T, T0, E, xp=0, freed=[], bosses=[], bullets=[], parts=[], nuggets=[];',
@@ -72,13 +73,15 @@ const code = [
   'function save(){} function float(){} function resetBoss(){} function tileColor(){}',
   'function addXp(n){xp+=n} function spawnNugget(id,x,y){freed.push([id,x,y])}',
   'const cur={ix:0,iy:0,c:null,drill:false,grab:false};',
+  'let saved=null; const localStorage={setItem:(k,v)=>{saved=[k,v]}};',
   'const inputDir=()=>[cur.ix,cur.iy], cursorVec=()=>cur.c, digOn=()=>cur.drill, grabOn=()=>cur.grab, foeNear=()=>null, bossInFront=()=>null;',
   'function armAim(ix,iy){const c=cur.c;if(c&&c[2]>.3)return[c[0]/c[2],c[1]/c[2]];if(ix||iy){const d=Math.hypot(ix,iy);return[ix/d,iy/d]}return[0,-1]}',
   'const document={createElement:()=>({getContext:()=>({createImageData:(w,h)=>({data:new Uint8ClampedArray(w*h*4)})})})};',
   ';({gen, W, H, SURF, PH, PW, chamber, initMask, digAt, setHatch, buildChunk, setT:(t)=>{T=t;T0=t.slice()}, setTexSeed:(s)=>{texSeed=s},',
   '   getM:()=>M, getR:()=>R, getT:()=>T, getXp:()=>xp, freed, S, P, st, cur, updPlayer, setE:(e)=>{E=e}, getE:()=>E, tick:(dt)=>{time+=dt},',
   '   updNuggets, getNug:()=>nuggets, setNug:(a)=>{nuggets=a},',
-  '   UPG, TAL, cost, xpNeed, points, realAddXp, sellAll, smeltAll, buy, updFurnace, cargoVal, barsVal, DECK})',
+  '   UPG, TAL, cost, xpNeed, points, realAddXp, sellAll, smeltAll, buy, updFurnace, cargoVal, barsVal, DECK,',
+  '   fresh, realSave, setS:(s)=>{S=s}, getSaved:()=>saved})',
 ].join('\n');
 const ref = eval(code); // eslint-disable-line no-eval
 
@@ -301,4 +304,33 @@ for (const seed of [1, 123456789, 2147483647]) {
   out.push(`sell ${S.coins - before} ${S.coins}`);
   fs.writeFileSync(path.join(outDir, 'economy.txt'), out.join('\n') + '\n');
   console.log(`économie : ${out.filter((l) => l.startsWith('cost')).length} coûts, niveau ${S.lvl} après 1000,5 XP, vente ${S.coins - before} pièces`);
+}
+
+// 8. Sauvegarde : une partie enregistrée par la vraie fonction save(), à relire côté C++
+{
+  const seed = 123456789;
+  const s = ref.fresh();
+  Object.assign(s, { seed, coins: 4321.5, xp: 17.25, lvl: 3, boss: [1, 0, 0, 0], dead: [2, 5, 11], maxDepth: 37, play: 1234.5678, seenL: 1, fallTip: 1 });
+  s.furnace = { q: [[12, 3], [15, 1]], p: 0.75, last: 1700000123456 };
+  s.cargo = { 10: 4, 13: 1 };
+  s.bars = { 11: 2, 18: 1 };
+  Object.assign(s.up, { power: 3, tank: 2, arm: 1 });
+  Object.assign(s.tal, { luck: 2 });
+  s.set = { music: 0.3, sfx: 1, vib: false, stick: 'dyn' };
+  ref.setS(s);
+  const w = ref.gen(seed);
+  ref.setT(w.t);
+  ref.initMask(null);
+  const E = new Uint8Array(ref.W * ref.H);
+  for (let x = 0; x < ref.W; x++) E[ref.SURF * ref.W + x] = 1;
+  for (let y = ref.SURF; y < ref.SURF + 12; y++) for (let x = 14; x < 22; x++) E[y * ref.W + x] = 1;
+  ref.setE(E);
+  for (const [cx, cy] of [[17.5, 6.4], [17.9, 7.3], [18.6, 8.2], [19.1, 9.6], [19.4, 11.2], [15.2, 10.1]]) ref.digAt(cx, cy, 0.47, 200);
+  Object.assign(ref.P, { x: 18.83125, y: 10.400000001, fuel: 57.123456789, hull: 41.5 });
+  ref.setNug([{ id: 12, x: 3.14159, y: 8.005, vx: 0, vy: 0 }, { id: 17, x: 20.125, y: 40.335, vx: 1, vy: 2 }, { id: 10, x: 1.005, y: 7, vx: 0, vy: 0 }]);
+  ref.realSave();
+  const [key, json] = ref.getSaved();
+  fs.writeFileSync(path.join(outDir, 'save_js.json'), json);
+  fs.writeFileSync(path.join(outDir, 'save_js.txt'), [`key ${key}`, `fnv remaining ${fnv(ref.getR())}`, `fnv tiles ${fnv(ref.getT())}`, `fnv explored ${fnv(ref.getE())}`].join('\n') + '\n');
+  console.log(`sauvegarde : ${json.length} caractères, clé ${key}`);
 }

@@ -31,7 +31,10 @@ struct FreedOre {  // pépite détachée d'un filon : à créer par le jeu
 
 class Terrain {
 public:
-    explicit Terrain(World& world);  // masque construit d'après les cases, puis le pont et les garde-corps
+    // Masque construit d'après les cases, ou d'après les bits d'une sauvegarde (MW * MH / 8 octets, ignorés sinon),
+    // puis le pont et les garde-corps ; trappe fermée
+    explicit Terrain(World& world, const std::vector<std::uint8_t>& bits = {});
+    std::vector<std::uint8_t> packMask() const;  // bits du masque, bit de poids faible d'abord (sauvegarde)
 
     bool cellSolid(int sx, int sy) const;
     bool cellAt(double x, double y) const { return cellSolid(fl8(x), fl8(y)); }
