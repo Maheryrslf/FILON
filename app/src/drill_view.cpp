@@ -14,6 +14,26 @@ void tri(Vector2 a, Vector2 b, Vector2 c, Color col) { DrawTriangle(a, b, c, col
 
 }  // namespace
 
+void drawArm(const filon::Drill& d) {
+    using namespace filon;
+    const Arm& a = d.arm;
+    if (a.state == ArmState::None) return;
+    const float ox = static_cast<float>((d.x + PW / 2) * TS), oy = static_cast<float>((d.y + .15 + d.vis) * TS);
+    const bool hooked = a.state == ArmState::Hooked;
+    const float tx = hooked ? static_cast<float>(a.hx * TS) : ox + static_cast<float>(a.ax * a.len * TS);
+    const float ty = hooked ? static_cast<float>(a.hy * TS) : oy + static_cast<float>(a.ay * a.len * TS);
+    const float dx = tx - ox, dy = ty - oy, dist = std::fmax(std::sqrt(dx * dx + dy * dy), .001f), ux = dx / dist, uy = dy / dist;
+    DrawLineEx({ox, oy}, {tx, ty}, 5, Color{58, 63, 70, 255});
+    DrawLineEx({ox, oy}, {tx, ty}, 2, Color{138, 147, 157, 255});
+    for (float k = 10; k < dist; k += 12) DrawCircleV({ox + ux * k, oy + uy * k}, 2.2f, Color{85, 96, 107, 255});  // segments télescopiques
+    const Color claw = hooked ? Color{255, 177, 59, 255} : Color{201, 208, 216, 255};  // pince : orange une fois plantée
+    for (float k : {-.6f, 0.f, .6f}) {
+        const float c = std::cos(k), s = std::sin(k), vx = ux * c - uy * s, vy = ux * s + uy * c;
+        DrawLineEx({tx - ux * 3, ty - uy * 3}, {tx + vx * 6, ty + vy * 6}, 2, claw);
+    }
+    DrawCircleV({ox, oy}, 3.5f, Color{85, 96, 107, 255});
+}
+
 void drawDrill(const filon::Drill& d, double time) {
     using namespace filon;
     const float X = static_cast<float>((d.x + PW / 2) * TS), Y = static_cast<float>((d.y + PH + d.vis) * TS);

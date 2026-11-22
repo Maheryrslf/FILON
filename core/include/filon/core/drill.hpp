@@ -1,6 +1,6 @@
 #pragma once
-// La foreuse : physique, tête de forage, pentes, forage, propulseur, trappe, carburant (fiche technique §4 et §6).
-// Le bras d'accroche et les coups portés aux créatures viendront ensuite.
+// La foreuse : physique, tête de forage, pentes, forage, propulseur, trappe, carburant, bras d'accroche
+// (fiche technique §4 et §6). Les coups portés aux créatures viendront ensuite.
 #include <cstdint>
 #include <vector>
 
@@ -17,6 +17,7 @@ struct DrillStats {  // valeurs tirées des améliorations et des talents
     double fuelMax = 60;
     double hullMax = 50;
     double light = 3.2;  // rayon d'exploration, en cases
+    double armReach = 3; // portée du bras d'accroche, en cases
     double eco = 0;      // niveau du talent Économe
     double armor = 0;    // niveau du talent Blindage
 };
@@ -26,6 +27,17 @@ struct DrillInput {
     bool cursor = false;        // un curseur vise la tête de forage
     double cdx = 0, cdy = 0;    // vecteur centre de la foreuse -> curseur, en cases
     bool drill = false;         // mode forage
+    bool grab = false;          // bras d'accroche
+};
+
+// Bras d'accroche : se plante dans la terre et retient la foreuse comme un pendule
+enum class ArmState : int { None = 0, Out = 1, Hooked = 2, Back = 3 };
+struct Arm {
+    ArmState state = ArmState::None;
+    double len = 0;          // longueur sortie (déploiement et rétraction)
+    double ax = 0, ay = 0;   // direction de visée
+    double hx = 0, hy = 0;   // point de prise
+    double rope = 0;         // longueur entre le centre de la foreuse et la prise (treuil)
 };
 
 struct Drill : Body {
@@ -39,6 +51,7 @@ struct Drill : Body {
     double fuel = 60, hull = 50;
     double air = 0, vis = 0, odo = 0, spin = 0, away = 0;
     int warned = -1, tx = 0, ty = 0;
+    Arm arm;
 };
 
 // Ce qui s'est passé pendant une image ; le jeu en tire les sons, messages et effets.
@@ -49,6 +62,7 @@ struct DrillEvents {
     bool hardRock = false;          // roche trop dure pour le foret actuel
     bool bump = false, sealBump = false;
     bool hatchToggled = false;
+    bool armHooked = false;         // le bras vient de se planter
     double landImpact = 0;          // vitesse d'atterrissage (> 6 : poussière)
     double damage = 0;              // dégâts subis
     bool fellHard = false;          // dégâts de chute
@@ -59,7 +73,8 @@ struct DrillEvents {
 
 bool onDeck(const Drill& d);
 bool inDock(const Drill& d);
-bool atBase(const Drill& d);  // le bras d'accroche ajoutera « accroché sous le pont »
+bool hookedUnderBase(const Drill& d);
+bool atBase(const Drill& d);  // posée sur le pont, ou accrochée dessous avec le bras
 
 void spawnOnDeck(Drill& d, const DrillStats& s);  // retour sur le pont de la base, plein fait
 

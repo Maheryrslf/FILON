@@ -5,6 +5,7 @@ add_library(filon-core STATIC
   src/texture.cpp
   src/physics.cpp
   src/drill.cpp
+  src/nuggets.cpp
 )
 target_include_directories(filon-core PUBLIC include)
 

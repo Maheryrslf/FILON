@@ -77,6 +77,7 @@ bool boxInTile(const Drill& d, const World& w, std::uint8_t tile) {
 void strand(Drill& d, const DrillStats& s, bool fuel, DrillEvents& ev) {
     (fuel ? ev.strandedFuel : ev.strandedHull) = true;  // le jeu retire la soute (moitié ou totalité)
     spawnOnDeck(d, s);
+    d.arm = Arm{};
     d.sliding = false;
     d.tilt = 0;
     d.under = false;
@@ -91,6 +92,80 @@ void hurt(Drill& d, const DrillStats& s, double dmg, bool force, DrillEvents& ev
     if (d.hull <= 0) strand(d, s, false, ev);
 }
 
+// ---------- Bras d'accroche ----------
+void armBack(Arm& a, double ox, double oy) {  // le bras rentre ; s'il était planté, il part de sa prise
+    if (a.state == ArmState::Hooked) {
+        a.len = std::hypot(a.hx - ox, a.hy - oy);
+        if (a.len == 0) a.len = .01;
+        a.ax = (a.hx - ox) / a.len;
+        a.ay = (a.hy - oy) / a.len;
+    }
+    a.state = ArmState::Back;
+}
+
+void updArm(Drill& d, const Terrain& t, const DrillStats& s, const DrillInput& in, double dt, DrillEvents& ev) {
+    const double ox = d.x + PW / 2, oy = d.y + .15;  // épaule du bras, en haut de la caisse
+    Arm& a = d.arm;
+    if (!in.grab) {
+        if (a.state != ArmState::None) {
+            if (a.state != ArmState::Back) armBack(a, ox, oy);
+            a.len -= 20 * dt;
+            if (a.len <= 0) a = Arm{};
+        }
+        return;
+    }
+    if (a.state == ArmState::None) {  // visée : vers le curseur, sinon la direction saisie, sinon vers le haut
+        double ax = 0, ay = -1;
+        const double cd = std::hypot(in.cdx, in.cdy);
+        if (in.cursor && cd > .3) {
+            ax = in.cdx / cd;
+            ay = in.cdy / cd;
+        } else if (in.ix || in.iy) {
+            const double dd = std::hypot(in.ix, in.iy);
+            ax = in.ix / dd;
+            ay = in.iy / dd;
+        }
+        a = Arm{ArmState::Out, 0, ax, ay, 0, 0, 0};
+    }
+    if (a.state == ArmState::Out) {
+        a.len += 18 * dt;
+        const double tx = ox + a.ax * a.len, ty = oy + a.ay * a.len;
+        if (t.cellAt(tx, ty)) {  // prise : premier pixel de terre touché
+            a.state = ArmState::Hooked;
+            a.hx = tx;
+            a.hy = ty;
+            a.rope = std::hypot(d.x + PW / 2 - tx, d.y + PH / 2 - ty);
+            ev.armHooked = true;
+        } else if (a.len >= s.armReach) {
+            a.state = ArmState::Back;
+        }
+    } else if (a.state == ArmState::Back) {
+        a.len -= 20 * dt;
+        if (a.len <= 0) a = Arm{};
+    } else if (!t.cellAt(a.hx, a.hy)) {  // la prise a été creusée : le bras lâche
+        armBack(a, ox, oy);
+    } else {
+        if (in.iy < 0) a.rope = std::max(.9, a.rope - 3 * dt);  // treuil
+        else if (in.iy > 0 && !in.drill) a.rope = std::min(s.armReach + .5, a.rope + 3 * dt);  // rappel
+        const double dx = d.x + PW / 2 - a.hx, dy = d.y + PH / 2 - a.hy;
+        double dist = std::hypot(dx, dy);
+        if (dist == 0) dist = 1;
+        if (dist > a.rope) {  // pendule : on ramène la foreuse sur le cercle et on retire la vitesse qui l'en éloigne
+            const double nx = a.hx + dx / dist * a.rope - PW / 2, ny = a.hy + dy / dist * a.rope - PH / 2;
+            if (!t.boxHits(nx, ny, PW, PH)) {
+                d.x = nx;
+                d.y = ny;
+            }
+            const double ux = dx / dist, uy = dy / dist, vr = d.vx * ux + d.vy * uy;
+            if (vr > 0) {
+                d.vx -= vr * ux;
+                d.vy -= vr * uy;
+            }
+            d.vx *= .995;
+        }
+    }
+}
+
 }  // namespace
 
 bool onDeck(const Drill& d) { return d.grounded && std::fabs(d.y + PH - DECK) < .06 && d.x + PW > DX1 && d.x < DX2; }
@@ -98,7 +173,11 @@ bool inDock(const Drill& d) {
     const double cx = d.x + PW / 2;
     return cx > GX1 - .05 && cx < GX2 + .05 && d.y + PH / 2 > DECK - 1.6 && d.y < SURF;
 }
-bool atBase(const Drill& d) { return onDeck(d); }
+bool hookedUnderBase(const Drill& d) {
+    const Arm& a = d.arm;
+    return a.state == ArmState::Hooked && a.hy > DECK - .1 && a.hy < DECK + .6 && a.hx > DX1 && a.hx < DX2;
+}
+bool atBase(const Drill& d) { return onDeck(d) || hookedUnderBase(d); }
 
 void spawnOnDeck(Drill& d, const DrillStats& s) {
     d.x = 19.4;
@@ -179,7 +258,8 @@ void updateDrill(Drill& d, Terrain& t, const World& w, std::vector<std::uint8_t>
         const double dir = (d.slope > 0 ? -1 : 1) * d.side;
         d.vx = std::clamp(d.vx + dir * GRAVITY * std::sin(std::fabs(d.slope)) * .8 * dt, -7.0, 7.0);
     }
-    d.thrust = iy < 0 && d.fuel > 0 && (d.y + PH > SURF + .25 || inDock(d));  // dans la mine ou dans la colonne d'accostage
+    // dans la mine ou dans la colonne d'accostage ; bras accroché : le haut actionne le treuil, pas le propulseur
+    d.thrust = iy < 0 && d.fuel > 0 && d.arm.state != ArmState::Hooked && (d.y + PH > SURF + .25 || inDock(d));
     if (d.thrust && inDock(d) && d.y + PH > DECK) {  // se centre sous la trappe en montant
         const double gx = (GX1 + GX2) / 2 - PW / 2;
         d.x += std::clamp(gx - d.x, -3 * dt, 3 * dt);
@@ -195,6 +275,8 @@ void updateDrill(Drill& d, Terrain& t, const World& w, std::vector<std::uint8_t>
         if (vy0 > 0) impact = vy0;
         d.vy = 0;
     }
+    updArm(d, t, s, in, dt, ev);
+    if (d.arm.state == ArmState::Hooked) impact *= .4;  // le bras accroché amortit la chute
 
     // après le déplacement
     d.vis *= std::exp(-dt * 14);
