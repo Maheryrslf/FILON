@@ -60,10 +60,14 @@ const code = [
   grabFn('function hurt('), grabFn('function strand('), grabFn('function groundSlope('), grabFn('function aimHead('),
   grabFn('function updPlayer('), grabFn('function armBack('), grabFn('function updArm('), grabFn('function afterMove('), grabFn('function explore('),
   grab('const cargoN='), grabFn('function updNuggets('),
+  // économie (addXp renommé : le scénario de forage garde son compteur d'XP simplifié)
+  grab('const UPG={', '};'), grab('const TAL={', '};'), grab('const fmt='), grab('const cargoVal='), grab('const barsVal='),
+  grab('const cost='), grab('const xpNeed='), grab('const points='), grabFn('function addXp(').replace('function addXp(', 'function realAddXp('),
+  grabFn('function sellAll('), grabFn('function smeltAll('), grabFn('function buy('), grabFn('function updFurnace('),
   // bouchons : ni affichage ni son ; on enregistre l'XP et les pépites libérées ; un canevas réduit à son tableau de pixels ;
   // commandes de la foreuse scriptées (pas de souris réelle, ni créature) ; le bras vise le curseur scripté comme armAim()
   'let T, T0, E, xp=0, freed=[], bosses=[], bullets=[], parts=[], nuggets=[];',
-  'let S={up:{power:0,blade:0,speed:0,tank:0,hull:0,cargo:0,light:0,radar:0,smelt:0,arm:0},tal:{pros:0,luck:0,turbo:0,eco:0,armor:0},cargo:{},maxDepth:0,seenL:0,fallTip:0};',
+  'let S={up:{power:0,blade:0,speed:0,tank:0,hull:0,cargo:0,light:0,radar:0,smelt:0,arm:0},tal:{pros:0,luck:0,turbo:0,eco:0,armor:0},cargo:{},bars:{},coins:0,xp:0,lvl:1,furnace:{q:[],p:0,last:0},maxDepth:0,seenL:0,fallTip:0};',
   'function paint(){} function recolorTile(){} function burst(){} function sfx(){} function vib(){} function toast(){} function shake(){}',
   'function save(){} function float(){} function resetBoss(){} function tileColor(){}',
   'function addXp(n){xp+=n} function spawnNugget(id,x,y){freed.push([id,x,y])}',
@@ -73,7 +77,8 @@ const code = [
   'const document={createElement:()=>({getContext:()=>({createImageData:(w,h)=>({data:new Uint8ClampedArray(w*h*4)})})})};',
   ';({gen, W, H, SURF, PH, PW, chamber, initMask, digAt, setHatch, buildChunk, setT:(t)=>{T=t;T0=t.slice()}, setTexSeed:(s)=>{texSeed=s},',
   '   getM:()=>M, getR:()=>R, getT:()=>T, getXp:()=>xp, freed, S, P, st, cur, updPlayer, setE:(e)=>{E=e}, getE:()=>E, tick:(dt)=>{time+=dt},',
-  '   updNuggets, getNug:()=>nuggets, setNug:(a)=>{nuggets=a}})',
+  '   updNuggets, getNug:()=>nuggets, setNug:(a)=>{nuggets=a},',
+  '   UPG, TAL, cost, xpNeed, points, realAddXp, sellAll, smeltAll, buy, updFurnace, cargoVal, barsVal, DECK})',
 ].join('\n');
 const ref = eval(code); // eslint-disable-line no-eval
 
@@ -239,4 +244,61 @@ for (const seed of [1, 123456789, 2147483647]) {
   }
   fs.writeFileSync(path.join(outDir, 'arm_1.txt'), out.join('\n') + '\n');
   console.log(`bras, graine 1 : ${frame} images, coque ${P.hull.toFixed(1)}, arrivée en (${P.x.toFixed(2)}, ${P.y.toFixed(2)})`);
+}
+
+// 7. Économie : coûts, effets des améliorations, XP, achats, fonderie (horloge simulée) et vente
+{
+  const { S, st, P } = ref;
+  const keys = Object.keys(ref.UPG), tals = Object.keys(ref.TAL);
+  const out = [];
+  const reset = () => {
+    for (const k of keys) S.up[k] = 0;
+    for (const k of tals) S.tal[k] = 0;
+    Object.assign(S, { coins: 0, xp: 0, lvl: 1, cargo: {}, bars: {}, furnace: { q: [], p: 0, last: 0 } });
+  };
+  reset();
+  for (const k of keys) {
+    for (let l = 0; l <= ref.UPG[k].max; l++) { S.up[k] = l; out.push(`cost ${k} ${l} ${ref.cost(k)}`); }
+    S.up[k] = 0;
+  }
+  const configs = [
+    [{}, {}],
+    [{ power: 5, blade: 3, speed: 4, tank: 6, hull: 7, cargo: 8, light: 2, radar: 3, smelt: 4, arm: 5 }, { pros: 2, luck: 1, turbo: 3, eco: 4, armor: 5 }],
+    [Object.fromEntries(keys.map((k) => [k, ref.UPG[k].max])), Object.fromEntries(tals.map((k) => [k, 5]))],
+  ];
+  configs.forEach(([up, tal], i) => {
+    reset(); Object.assign(S.up, up); Object.assign(S.tal, tal);
+    out.push(`config ${i} ${keys.map((k) => S.up[k]).join(' ')} ${tals.map((k) => S.tal[k]).join(' ')}`);
+    const vals = [0, 1, 2, 3, 4, 5, 6, 7, 8].map((j) => st.val(j));
+    out.push(`stat ${i} ${st.dps()} ${st.ram()} ${st.spd()} ${st.fuel()} ${st.hull()} ${st.cargo()} ${st.light()} ${st.radar()} ${st.smelt()} ${st.arm()} ${vals.join(' ')}`);
+  });
+  for (let l = 1; l <= 60; l++) out.push(`xpneed ${l} ${ref.xpNeed(l)}`);
+
+  // scénario à la base
+  reset();
+  Object.assign(P, { x: 19.4, y: ref.DECK - ref.PH - 0.001, grounded: true, arm: null });
+  ref.realAddXp(1000.5);
+  out.push(`addxp 1000.5 ${S.lvl} ${S.xp} ${ref.points()}`);
+  S.coins = 5000;
+  for (const k of ['power', 'power', 'tank', 'hull', 'radar', 'arm', 'arm', 'arm', 'arm', 'arm', 'arm', 'arm', 'cargo', 'power'])
+    { ref.buy(k); out.push(`buy ${k} ${S.coins} ${S.up[k]}`); }
+  const realNow = Date.now;
+  let now = 1.7e12;
+  Date.now = () => now;
+  S.furnace = { q: [], p: 0, last: now };
+  S.cargo = { 10: 3, 11: 2, 14: 5 };
+  ref.smeltAll();
+  out.push(`smelt ${JSON.stringify(S.furnace.q)}`);
+  for (const step of [1000, 2500, 7000, 400, 3600000 * 9]) {
+    now += step;
+    ref.updFurnace();
+    out.push(`furnace ${step} ${S.furnace.q.map(([id, n]) => id + ':' + n).join(',') || '-'} ${S.furnace.p} ${[10, 11, 12, 13, 14, 15, 16, 17, 18].map((id) => S.bars[id] || 0).join(' ')}`);
+  }
+  Date.now = realNow;
+  S.cargo = { 12: 4, 16: 1 };
+  const before = S.coins;
+  ref.sellAll();
+  out.push(`sell ${S.coins - before} ${S.coins}`);
+  fs.writeFileSync(path.join(outDir, 'economy.txt'), out.join('\n') + '\n');
+  console.log(`économie : ${out.filter((l) => l.startsWith('cost')).length} coûts, niveau ${S.lvl} après 1000,5 XP, vente ${S.coins - before} pièces`);
 }

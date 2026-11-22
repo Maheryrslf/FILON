@@ -6,6 +6,7 @@ add_library(filon-core STATIC
   src/physics.cpp
   src/drill.cpp
   src/nuggets.cpp
+  src/economy.cpp
 )
 target_include_directories(filon-core PUBLIC include)
 

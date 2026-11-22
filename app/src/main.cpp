@@ -1,16 +1,20 @@
-// Filon : la foreuse dans la mine (terrain en pixels, physique, tourelle, forage, pépites, bras d'accroche).
+// Filon : la foreuse dans la mine (terrain en pixels, physique, tourelle, forage, pépites, bras d'accroche, économie).
 // Souris : la foreuse suit le curseur ; clic gauche maintenu : forer ; clic droit maintenu : bras d'accroche.
-// Clavier : flèches ou ZQSD pour bouger, Espace pour forer, Maj pour le bras. N : nouveau monde. Échap : quitter.
-// --capture fichier.png : parcours d'essai, image de l'écran, puis fin (vérification automatique).
+// Clavier : flèches ou ZQSD pour bouger, Espace pour forer, Maj pour le bras.
+// Échap ou B : menu de la base (le jeu est en pause pendant le menu). N : nouveau monde. Fermer la fenêtre pour quitter.
+// --capture fichier.png / --capture-menu fichier.png : parcours d'essai, image de l'écran, puis fin (vérification automatique).
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include "base_menu.hpp"
 #include "drill_view.hpp"
 #include "filon/core/drill.hpp"
+#include "filon/core/economy.hpp"
 #include "filon/core/nuggets.hpp"
 #include "filon/core/random.hpp"
 #include "filon/core/texture.hpp"
@@ -22,27 +26,25 @@ namespace {
 
 using namespace filon;
 
+std::int64_t nowMs() {  // horloge réelle, pour la fonderie qui avance aussi jeu fermé
+    return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+}
+
 struct Game {
     World world;
     Terrain terrain;
     TerrainView view;
     std::vector<std::uint8_t> explored;
-    DrillStats stats;
+    Economy eco;
     Drill drill;
     std::vector<Nugget> nuggets;
-    int cargo[ORE_COUNT] = {};  // minerais dans la soute, par type
-    int cargoMax = 10;
-    Rng rng;                    // effets seulement (vitesse de départ des pépites)
-    int cargoCount() const {
-        int n = 0;
-        for (int c : cargo) n += c;
-        return n;
-    }
+    Rng rng;  // effets et chance (vitesse des pépites, filon double)
     explicit Game(std::uint32_t seed)
         : world(generate(seed)), terrain(world), view(world, terrain, textureSeed(seed)), explored(static_cast<std::size_t>(W * H), 0),
           rng(seed ^ 0x9e3779b9u) {
         for (int x = 0; x < W; ++x) explored[static_cast<std::size_t>(SURF * W + x)] = 1;
-        spawnOnDeck(drill, stats);
+        eco.furnace.last = nowMs();
+        spawnOnDeck(drill, drillStats(eco));
     }
 };
 
@@ -64,18 +66,25 @@ void bar(int x, int y, int w, double frac, Color c, const std::string& label) {
 }  // namespace
 
 int main(int argc, char** argv) {
-    const char* capture = argc == 3 && std::string(argv[1]) == "--capture" ? argv[2] : nullptr;
+    const std::string mode = argc == 3 ? argv[1] : "";
+    const char* capture = (mode == "--capture" || mode == "--capture-menu") ? argv[2] : nullptr;
     SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT);
     InitWindow(1280, 720, "Filon");
+    SetExitKey(KEY_NULL);  // Échap ouvre le menu de la base
     SetTargetFPS(60);
 
     std::uint32_t seed = 1;
     auto game = std::make_unique<Game>(seed);
-    double camX = 0, camY = 0, time = 0;
+    BaseMenu menu;
+    double camX = 0, camY = 0, time = 0, lastFull = -9;
     bool camInit = false;
     std::string toast;
     double toastT = 0;
     int frame = 0;
+    auto say = [&](const std::string& m, double t = 2.8) {
+        toast = m;
+        toastT = t;
+    };
     if (capture) {  // le parcours d'essai part du sol, pas du pont
         game->drill.x = 17.11;
         game->drill.y = SURF - PH - .001;
@@ -90,68 +99,73 @@ int main(int argc, char** argv) {
             game = std::make_unique<Game>(seed);
             camInit = false;
         }
+        if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_B)) menu.open = !menu.open;
         const float scale = std::clamp(std::min(GetScreenWidth(), GetScreenHeight()) / (10.5f * TS), .9f, 2.2f);
         Drill& d = game->drill;
-
-        // commandes : clavier d'abord, sinon la souris (zone morte de 0,6 case autour de la foreuse)
-        DrillInput in;
-        const Vector2 m = GetMousePosition();
-        const double pcx = d.x + PW / 2, pcy = d.y + PH / 2;
-        in.cursor = IsCursorOnScreen();
-        in.cdx = (camX + m.x / scale) / TS - pcx;
-        in.cdy = (camY + m.y / scale) / TS - pcy;
-        in.ix = (IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D)) - (IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_A));
-        in.iy = (IsKeyDown(KEY_DOWN) || IsKeyDown(KEY_S)) - (IsKeyDown(KEY_UP) || IsKeyDown(KEY_W));
-        if (!in.ix && !in.iy && in.cursor && std::hypot(in.cdx, in.cdy) > .6) octant(in.cdx, in.cdy, in.ix, in.iy);
-        in.drill = IsMouseButtonDown(MOUSE_BUTTON_LEFT) || IsKeyDown(KEY_SPACE);
-        in.grab = IsMouseButtonDown(MOUSE_BUTTON_RIGHT) || IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
-        if (capture) {  // parcours d'essai : rampe vers la droite en forant, puis bras d'accroche vers le haut à gauche
-            in = DrillInput{};
-            in.cursor = true;
-            if (frame < 240) {
-                in.ix = 1;
-                in.iy = 1;
-                in.cdx = in.cdy = .7;
-                in.drill = true;
-            } else {
-                in.cdx = -1;
-                in.cdy = -1.2;
-                in.grab = true;
-            }
-        }
+        Economy& eco = game->eco;
+        const DrillStats stats = drillStats(eco);
+        const Rectangle menuBtn{static_cast<float>(GetScreenWidth() - 120), 40, 104, 40};
+        const bool overUi = menu.open || CheckCollisionPointRec(GetMousePosition(), menuBtn);
+        updateFurnace(eco, nowMs());
 
         DrillEvents ev;
-        updateDrill(d, game->terrain, game->world, game->explored, game->stats, in, dt, ev);
-        game->view.sync(game->terrain);
-        game->terrain.xpGained = 0;
-        for (const FreedOre& f : game->terrain.freed)  // une pépite jaillit de chaque filon dégagé
-            game->nuggets.push_back({f.id, f.x, f.y, (game->rng.next() - .5) * 2.5, -2 - game->rng.next() * 2});
-        game->terrain.freed.clear();
-        if (ev.strandedFuel)  // panne sèche : la moitié de la soute est perdue ; destruction : toute la soute
-            for (int& c : game->cargo) c /= 2;
-        if (ev.strandedHull)
-            for (int& c : game->cargo) c = 0;
-        {
-            int n = game->cargoCount();
-            const NuggetUpdate up = updateNuggets(game->nuggets, game->terrain, d.x + PW / 2, d.y + PH / 2, n, game->cargoMax, dt);
-            for (std::uint8_t id : up.collected) {
-                ++game->cargo[id - ORE_FIRST];
-                toast = std::string("+1 ") + ORES[id - ORE_FIRST].name;
-                toastT = 1.2;
+        if (!menu.open) {  // le menu met le jeu en pause
+            // commandes : clavier d'abord, sinon la souris (zone morte de 0,6 case autour de la foreuse)
+            DrillInput in;
+            const Vector2 m = GetMousePosition();
+            const double pcx = d.x + PW / 2, pcy = d.y + PH / 2;
+            in.cursor = IsCursorOnScreen() && !overUi;
+            in.cdx = (camX + m.x / scale) / TS - pcx;
+            in.cdy = (camY + m.y / scale) / TS - pcy;
+            in.ix = (IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D)) - (IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_A));
+            in.iy = (IsKeyDown(KEY_DOWN) || IsKeyDown(KEY_S)) - (IsKeyDown(KEY_UP) || IsKeyDown(KEY_W));
+            if (!in.ix && !in.iy && in.cursor && std::hypot(in.cdx, in.cdy) > .6) octant(in.cdx, in.cdy, in.ix, in.iy);
+            in.drill = (!overUi && IsMouseButtonDown(MOUSE_BUTTON_LEFT)) || IsKeyDown(KEY_SPACE);
+            in.grab = (!overUi && IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) || IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
+            if (capture) {  // parcours d'essai : rampe vers la droite en forant, puis bras d'accroche vers le haut à gauche
+                in = DrillInput{};
+                in.cursor = true;
+                if (frame < 240) {
+                    in.ix = 1;
+                    in.iy = 1;
+                    in.cdx = in.cdy = .7;
+                    in.drill = true;
+                } else {
+                    in.cdx = -1;
+                    in.cdy = -1.2;
+                    in.grab = true;
+                }
             }
-            static double lastFull = -9;
+
+            updateDrill(d, game->terrain, game->world, game->explored, stats, in, dt, ev);
+            game->view.sync(game->terrain);
+            if (const int lv = addXp(eco, game->terrain.xpGained)) say("Niveau " + std::to_string(eco.lvl) + " ! +" + std::to_string(lv) + " point de talent");
+            game->terrain.xpGained = 0;
+            for (const FreedOre& f : game->terrain.freed) {  // une pépite jaillit de chaque filon dégagé (deux avec Filon double)
+                const int n = 1 + (game->rng.next() < .06 * eco.tal[LUCK] ? 1 : 0);
+                for (int k = 0; k < n; ++k) game->nuggets.push_back({f.id, f.x, f.y, (game->rng.next() - .5) * 2.5, -2 - game->rng.next() * 2});
+            }
+            game->terrain.freed.clear();
+            if (ev.strandedFuel)  // panne sèche : la moitié de la soute est perdue ; destruction : toute la soute
+                for (int& c : eco.cargo) c /= 2;
+            if (ev.strandedHull)
+                for (int& c : eco.cargo) c = 0;
+            int n = cargoCount(eco);
+            const NuggetUpdate up = updateNuggets(game->nuggets, game->terrain, d.x + PW / 2, d.y + PH / 2, n, effects(eco).cargo, dt);
+            for (std::uint8_t id : up.collected) {
+                ++eco.cargo[id - ORE_FIRST];
+                say(std::string("+1 ") + ORES[id - ORE_FIRST].name, 1.2);
+            }
             if (up.cargoFull && time - lastFull > 2.5) {
                 lastFull = time;
-                toast = "Soute pleine : remonte vendre ou fondre.";
-                toastT = 2.8;
+                say("Soute pleine : remonte vendre ou fondre.");
             }
+            if (ev.strandedFuel) say("Panne sèche ! Remorquée à la base, la moitié de la soute est perdue.");
+            if (ev.strandedHull) say("Foreuse détruite ! Rapatriée à la base, la soute est perdue.");
+            if (ev.hardRock) say("Roche très dure : améliore ton foret à l'atelier.");
+            if (ev.sealBump) say("Roche scellée : bats le gardien de cette couche.");
+            if (ev.arrivedAtBase) say("Base : plein et réparations faits. Échap ou B pour vendre et améliorer.");
         }
-        if (ev.strandedFuel) toast = "Panne sèche ! Remorquée à la base, la moitié de la soute est perdue.";
-        if (ev.strandedHull) toast = "Foreuse détruite ! Rapatriée à la base, la soute est perdue.";
-        if (ev.hardRock) toast = "Roche très dure : il faudra un meilleur foret.";
-        if (ev.sealBump) toast = "Roche scellée : bats le gardien de cette couche.";
-        if (ev.arrivedAtBase) toast = "Base : plein et réparations faits.";
-        if (ev.strandedFuel || ev.strandedHull || ev.hardRock || ev.sealBump || ev.arrivedAtBase) toastT = 2.8;
         toastT -= dt;
 
         // caméra amortie (plus douce à la verticale, à cause des marches de pixels)
@@ -188,9 +202,9 @@ int main(int argc, char** argv) {
         for (int sx = static_cast<int>(DX1 * 8); sx < DX2 * 8; ++sx)
             for (int sy = static_cast<int>(DECK * 8) - 8; sy < DECK * 8 + 4; ++sy)
                 if (game->terrain.cellSolid(sx, sy)) DrawRectangle(sx * PX, sy * PX, PX, PX, Color{90, 99, 108, 255});
-        for (const Nugget& n : game->nuggets) {  // pépites : 2 x 2 pixels de terre, reflet et ombre
-            const OreDef& o = ORES[n.id - ORE_FIRST];
-            const float X = std::round(static_cast<float>(n.x * TS) / 2) * 2 - 4, Y = std::round(static_cast<float>(n.y * TS) / 2) * 2 - 4;
+        for (const Nugget& nu : game->nuggets) {  // pépites : 2 x 2 pixels de terre, reflet et ombre
+            const OreDef& o = ORES[nu.id - ORE_FIRST];
+            const float X = std::round(static_cast<float>(nu.x * TS) / 2) * 2 - 4, Y = std::round(static_cast<float>(nu.y * TS) / 2) * 2 - 4;
             DrawRectangleRec({X, Y, 8, 8}, Color{static_cast<unsigned char>(o.color >> 16), static_cast<unsigned char>(o.color >> 8), static_cast<unsigned char>(o.color), 255});
             DrawRectangleRec({X, Y, 4, 4}, Color{static_cast<unsigned char>(o.glint >> 16), static_cast<unsigned char>(o.glint >> 8), static_cast<unsigned char>(o.glint), 255});
             DrawRectangleRec({X + 4, Y + 4, 4, 4}, Color{0, 0, 0, 89});
@@ -199,18 +213,41 @@ int main(int argc, char** argv) {
         drawDrill(d, time);
         EndMode2D();
 
-        bar(12, 12, 300, d.fuel / game->stats.fuelMax, Color{255, 177, 59, 255}, "CARBURANT " + std::to_string(static_cast<int>(std::ceil(std::max(0.0, d.fuel)))));
-        bar(12, 36, 300, d.hull / game->stats.hullMax, Color{255, 90, 74, 255}, "COQUE " + std::to_string(static_cast<int>(std::ceil(std::max(0.0, d.hull)))));
-        DrawText(d.under ? (std::to_string(std::max(0, ev.depth) * 2) + " m").c_str() : "Surface", 330, 14, 20, RAYWHITE);
-        DrawText(("Soute " + std::to_string(game->cargoCount()) + "/" + std::to_string(game->cargoMax) + "    Graine " + std::to_string(seed)).c_str(), 330, 38,
-                 16, game->cargoCount() >= game->cargoMax ? Color{255, 90, 74, 255} : LIGHTGRAY);
+        // relevés
+        bar(12, 12, 300, d.fuel / stats.fuelMax, Color{255, 177, 59, 255}, "CARBURANT " + std::to_string(static_cast<int>(std::ceil(std::max(0.0, d.fuel)))));
+        bar(12, 36, 300, d.hull / stats.hullMax, Color{255, 90, 74, 255}, "COQUE " + std::to_string(static_cast<int>(std::ceil(std::max(0.0, d.hull)))));
+        const int depth = static_cast<int>(std::floor(d.y + PH)) - SURF + 1;  // calculée ici : la simulation est en pause pendant le menu
+        DrawText(d.under ? (std::to_string(std::max(0, depth) * 2) + " m").c_str() : "Surface", 330, 14, 20, RAYWHITE);
+        const int cargoMax = effects(eco).cargo;
+        DrawText(("Soute " + std::to_string(cargoCount(eco)) + "/" + std::to_string(cargoMax)).c_str(), 330, 38, 16,
+                 cargoCount(eco) >= cargoMax ? Color{255, 90, 74, 255} : LIGHTGRAY);
+        DrawText((std::to_string(static_cast<long long>(eco.coins)) + " pièces   Niv. " + std::to_string(eco.lvl)).c_str(), 450, 38, 16, Color{255, 177, 59, 255});
+        // bouton Base / Menu, en haut à droite
+        const bool base = atBase(d);
+        const bool hover = CheckCollisionPointRec(GetMousePosition(), menuBtn);
+        DrawRectangleRounded(menuBtn, .5f, 8, base ? Color{255, 177, 59, 255} : (hover ? Color{60, 46, 38, 240} : Color{30, 22, 19, 225}));
+        const char* label = base ? "BASE" : "MENU";
+        DrawText(label, static_cast<int>(menuBtn.x + (menuBtn.width - MeasureText(label, 18)) / 2), static_cast<int>(menuBtn.y + 11), 18,
+                 base ? Color{42, 22, 6, 255} : RAYWHITE);
+        if (!menu.open && hover && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) menu.open = true;
+
+        if (capture && mode == "--capture-menu" && frame == 290) {  // menu d'essai : un peu de minerai et de pièces
+            eco.coins = 1234;
+            eco.cargo[1] = 3;
+            eco.cargo[4] = 2;
+            eco.bars[2] = 4;
+            menu.open = true;
+            menu.tab = 2;
+        }
+        if (const std::string m = menu.draw(eco, d, base); !m.empty()) say(m);
         if (toastT > 0) {
             const int tw = MeasureText(toast.c_str(), 18);
             DrawRectangle(GetScreenWidth() / 2 - tw / 2 - 14, 80, tw + 28, 32, Color{18, 13, 11, 235});
             DrawText(toast.c_str(), GetScreenWidth() / 2 - tw / 2, 87, 18, RAYWHITE);
         }
-        DrawText("Souris : diriger   Clic gauche / Espace : forer   Clic droit / Maj : bras   Flèches / ZQSD : bouger   N : nouveau monde", 12, GetScreenHeight() - 24, 16,
-                 Color{179, 157, 138, 255});
+        if (!menu.open)
+            DrawText("Souris : diriger   Clic gauche / Espace : forer   Clic droit / Maj : bras   Échap / B : base   N : nouveau monde", 12,
+                     GetScreenHeight() - 24, 16, Color{179, 157, 138, 255});
         DrawFPS(GetScreenWidth() - 100, 12);
         const bool shoot = capture && frame == 300;
         if (shoot) {

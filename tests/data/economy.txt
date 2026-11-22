@@ -1,0 +1,198 @@
+cost power 0 30
+cost power 1 51
+cost power 2 87
+cost power 3 147
+cost power 4 251
+cost power 5 426
+cost power 6 724
+cost power 7 1231
+cost power 8 2093
+cost power 9 3558
+cost power 10 6048
+cost power 11 10282
+cost power 12 17479
+cost blade 0 40
+cost blade 1 68
+cost blade 2 116
+cost blade 3 197
+cost blade 4 334
+cost blade 5 568
+cost blade 6 966
+cost blade 7 1641
+cost blade 8 2790
+cost blade 9 4744
+cost blade 10 8064
+cost blade 11 13709
+cost blade 12 23305
+cost speed 0 25
+cost speed 1 40
+cost speed 2 64
+cost speed 3 102
+cost speed 4 164
+cost speed 5 262
+cost speed 6 419
+cost speed 7 671
+cost speed 8 1074
+cost speed 9 1718
+cost speed 10 2749
+cost tank 0 25
+cost tank 1 41
+cost tank 2 68
+cost tank 3 112
+cost tank 4 185
+cost tank 5 306
+cost tank 6 504
+cost tank 7 832
+cost tank 8 1373
+cost tank 9 2266
+cost tank 10 3739
+cost tank 11 6170
+cost tank 12 10180
+cost hull 0 35
+cost hull 1 60
+cost hull 2 101
+cost hull 3 172
+cost hull 4 292
+cost hull 5 497
+cost hull 6 845
+cost hull 7 1436
+cost hull 8 2442
+cost hull 9 4151
+cost hull 10 7056
+cost hull 11 11995
+cost hull 12 20392
+cost cargo 0 30
+cost cargo 1 50
+cost cargo 2 82
+cost cargo 3 135
+cost cargo 4 222
+cost cargo 5 367
+cost cargo 6 605
+cost cargo 7 999
+cost cargo 8 1648
+cost cargo 9 2719
+cost cargo 10 4487
+cost cargo 11 7404
+cost cargo 12 12216
+cost light 0 20
+cost light 1 36
+cost light 2 65
+cost light 3 117
+cost light 4 210
+cost light 5 378
+cost light 6 680
+cost light 7 1224
+cost light 8 2204
+cost radar 0 60
+cost radar 1 114
+cost radar 2 217
+cost radar 3 412
+cost radar 4 782
+cost radar 5 1486
+cost radar 6 2823
+cost radar 7 5363
+cost radar 8 10190
+cost smelt 0 50
+cost smelt 1 90
+cost smelt 2 162
+cost smelt 3 292
+cost smelt 4 525
+cost smelt 5 945
+cost smelt 6 1701
+cost smelt 7 3061
+cost smelt 8 5510
+cost arm 0 40
+cost arm 1 68
+cost arm 2 116
+cost arm 3 197
+cost arm 4 334
+cost arm 5 568
+cost arm 6 966
+config 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+stat 0 3 12 4 60 50 10 3.2 0 3 3 3 7 13 24 42 75 130 230 400
+config 1 5 3 4 6 7 8 2 3 4 5 2 1 3 4 5
+stat 1 17.71734712147199 34.359455999999994 6 228 295 66 4.6 9 1.25 6 3.4799999999999995 8.12 15.079999999999998 27.839999999999996 48.72 87 150.79999999999998 266.79999999999995 463.99999999999994
+config 2 12 12 10 12 12 12 8 8 8 6 5 5 5 5 5
+stat 2 186.04313271841372 806.5687260679766 9 396 470 94 8.8 19 0.7894736842105263 6.6 4.199999999999999 9.799999999999999 18.2 33.599999999999994 58.8 105 182 322 560
+xpneed 1 25
+xpneed 2 33
+xpneed 3 42
+xpneed 4 55
+xpneed 5 71
+xpneed 6 93
+xpneed 7 121
+xpneed 8 157
+xpneed 9 204
+xpneed 10 265
+xpneed 11 345
+xpneed 12 448
+xpneed 13 582
+xpneed 14 757
+xpneed 15 984
+xpneed 16 1280
+xpneed 17 1664
+xpneed 18 2163
+xpneed 19 2811
+xpneed 20 3655
+xpneed 21 4751
+xpneed 22 6177
+xpneed 23 8030
+xpneed 24 10438
+xpneed 25 13570
+xpneed 26 17641
+xpneed 27 22933
+xpneed 28 29813
+xpneed 29 38757
+xpneed 30 50385
+xpneed 31 65500
+xpneed 32 85150
+xpneed 33 110695
+xpneed 34 143903
+xpneed 35 187074
+xpneed 36 243197
+xpneed 37 316155
+xpneed 38 411002
+xpneed 39 534303
+xpneed 40 694594
+xpneed 41 902972
+xpneed 42 1173863
+xpneed 43 1526022
+xpneed 44 1983829
+xpneed 45 2578977
+xpneed 46 3352670
+xpneed 47 4358472
+xpneed 48 5666013
+xpneed 49 7365817
+xpneed 50 9575562
+xpneed 51 12448231
+xpneed 52 16182700
+xpneed 53 21037510
+xpneed 54 27348763
+xpneed 55 35553391
+xpneed 56 46219409
+xpneed 57 60085231
+xpneed 58 78110801
+xpneed 59 101544041
+xpneed 60 132007253
+addxp 1000.5 10 199.5 9
+buy power 4970 1
+buy power 4919 2
+buy tank 4894 1
+buy hull 4859 1
+buy radar 4799 1
+buy arm 4759 1
+buy arm 4691 2
+buy arm 4575 3
+buy arm 4378 4
+buy arm 4044 5
+buy arm 3476 6
+buy arm 3476 6
+buy cargo 3446 1
+buy power 3359 3
+smelt [[10,3],[11,2],[14,5]]
+furnace 1000 10:3,11:2,14:5 1 0 0 0 0 0 0 0 0 0
+furnace 2500 10:2,11:2,14:5 0.5 1 0 0 0 0 0 0 0 0
+furnace 7000 11:2,14:5 1.5 3 0 0 0 0 0 0 0 0
+furnace 400 11:2,14:5 1.9 3 0 0 0 0 0 0 0 0
+furnace 32400000 - 0 3 2 0 0 5 0 0 0 0
+sell 765 4124
