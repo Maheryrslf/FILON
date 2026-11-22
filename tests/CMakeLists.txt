@@ -6,3 +6,8 @@ add_executable(filon-test-world test_world.cpp)
 target_link_libraries(filon-test-world PRIVATE filon-core)
 target_compile_definitions(filon-test-world PRIVATE FILON_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data")
 add_test(NAME parite-monde COMMAND filon-test-world)
+
+add_executable(filon-test-dig test_dig.cpp)
+target_link_libraries(filon-test-dig PRIVATE filon-core)
+target_compile_definitions(filon-test-dig PRIVATE FILON_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data")
+add_test(NAME parite-forage COMMAND filon-test-dig)

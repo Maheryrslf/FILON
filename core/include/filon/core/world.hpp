@@ -52,7 +52,8 @@ struct FoeSpawn {
 
 struct World {
     std::uint32_t seed = 0;
-    std::vector<std::uint8_t> tiles;  // W * H, rangée par rangée
+    std::vector<std::uint8_t> tiles;     // W * H, rangée par rangée ; évolue (filon extrait, sceau brisé)
+    std::vector<std::uint8_t> original;  // types d'origine, pour les textures
     std::vector<FoeSpawn> foes;
     std::uint8_t at(int x, int y) const {
         return (x < 0 || x >= W || y < 0 || y >= H) ? std::uint8_t{BED} : tiles[static_cast<std::size_t>(y * W + x)];

@@ -149,6 +149,7 @@ World generate(std::uint32_t seed) {
             }
         }
     }
+    w.original = w.tiles;
     return w;
 }
 

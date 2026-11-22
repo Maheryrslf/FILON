@@ -1,6 +1,7 @@
 add_library(filon-core STATIC
   src/random.cpp
   src/world.cpp
+  src/terrain.cpp
 )
 target_include_directories(filon-core PUBLIC include)
 
