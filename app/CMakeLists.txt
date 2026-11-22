@@ -1,0 +1,5 @@
+add_executable(filon src/main.cpp)
+target_link_libraries(filon PRIVATE filon-core raylib)
+if(NOT MSVC)
+  target_compile_options(filon PRIVATE -Wall -Wextra)
+endif()
