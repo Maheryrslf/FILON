@@ -64,24 +64,29 @@ const code = [
   grab('const UPG={', '};'), grab('const TAL={', '};'), grab('const fmt='), grab('const cargoVal='), grab('const barsVal='),
   grab('const cost='), grab('const xpNeed='), grab('const points='), grabFn('function addXp(').replace('function addXp(', 'function realAddXp('),
   grabFn('function sellAll('), grabFn('function smeltAll('), grabFn('function buy('), grabFn('function updFurnace('),
+  grab('const OCT='), grab('const dotN='), grab('const BOSSES=[', '];'), grabFn('function foeNear('), grabFn('function bossInFront('),
+  grabFn('function hitFoe('), grabFn('function hitBoss('), grabFn('function killBoss('), grabFn('function resetBoss('), grabFn('function updFoes('),
+  grab('function bounds('), grab('function newGoal('), grab('function inCh('), grabFn('function updBoss('), grabFn('function updBullets('),
   grab('const b64='), grabFn('function fresh('), grabFn('function save(').replace('function save(', 'function realSave('),
   // bouchons : ni affichage ni son ; on enregistre l'XP et les pépites libérées ; un canevas réduit à son tableau de pixels ;
   // commandes de la foreuse scriptées (pas de souris réelle, ni créature) ; le bras vise le curseur scripté comme armAim()
-  'let T, T0, E, xp=0, freed=[], bosses=[], bullets=[], parts=[], nuggets=[];',
+  'let T, T0, E, xp=0, freed=[], foes=[], bosses=[], bullets=[], parts=[], nuggets=[];',
   'let S={up:{power:0,blade:0,speed:0,tank:0,hull:0,cargo:0,light:0,radar:0,smelt:0,arm:0},tal:{pros:0,luck:0,turbo:0,eco:0,armor:0},cargo:{},bars:{},coins:0,xp:0,lvl:1,furnace:{q:[],p:0,last:0},maxDepth:0,seenL:0,fallTip:0};',
   'function paint(){} function recolorTile(){} function burst(){} function sfx(){} function vib(){} function toast(){} function shake(){}',
-  'function save(){} function float(){} function resetBoss(){} function tileColor(){}',
+  'function save(){} function float(){} function tileColor(){}',
   'function addXp(n){xp+=n} function spawnNugget(id,x,y){freed.push([id,x,y])}',
   'const cur={ix:0,iy:0,c:null,drill:false,grab:false};',
   'let saved=null; const localStorage={setItem:(k,v)=>{saved=[k,v]}};',
-  'const inputDir=()=>[cur.ix,cur.iy], cursorVec=()=>cur.c, digOn=()=>cur.drill, grabOn=()=>cur.grab, foeNear=()=>null, bossInFront=()=>null;',
+  'const inputDir=()=>[cur.ix,cur.iy], cursorVec=()=>cur.c, digOn=()=>cur.drill, grabOn=()=>cur.grab;',
   'function armAim(ix,iy){const c=cur.c;if(c&&c[2]>.3)return[c[0]/c[2],c[1]/c[2]];if(ix||iy){const d=Math.hypot(ix,iy);return[ix/d,iy/d]}return[0,-1]}',
   'const document={createElement:()=>({getContext:()=>({createImageData:(w,h)=>({data:new Uint8ClampedArray(w*h*4)})})})};',
   ';({gen, W, H, SURF, PH, PW, chamber, initMask, digAt, setHatch, buildChunk, setT:(t)=>{T=t;T0=t.slice()}, setTexSeed:(s)=>{texSeed=s},',
   '   getM:()=>M, getR:()=>R, getT:()=>T, getXp:()=>xp, freed, S, P, st, cur, updPlayer, setE:(e)=>{E=e}, getE:()=>E, tick:(dt)=>{time+=dt},',
   '   updNuggets, getNug:()=>nuggets, setNug:(a)=>{nuggets=a},',
   '   UPG, TAL, cost, xpNeed, points, realAddXp, sellAll, smeltAll, buy, updFurnace, cargoVal, barsVal, DECK,',
-  '   fresh, realSave, setS:(s)=>{S=s}, getSaved:()=>saved})',
+  '   fresh, realSave, setS:(s)=>{S=s}, getSaved:()=>saved,',
+  '   rng, BOSSES, setFoes:(a)=>{foes=a}, getFoes:()=>foes, setBosses:(a)=>{bosses=a}, getBosses:()=>bosses, getBullets:()=>bullets,',
+  '   foeNear, bossInFront, hitFoe, hitBoss, updFoes, updBoss, updBullets})',
 ].join('\n');
 const ref = eval(code); // eslint-disable-line no-eval
 
@@ -333,4 +338,50 @@ for (const seed of [1, 123456789, 2147483647]) {
   fs.writeFileSync(path.join(outDir, 'save_js.json'), json);
   fs.writeFileSync(path.join(outDir, 'save_js.txt'), [`key ${key}`, `fnv remaining ${fnv(ref.getR())}`, `fnv tiles ${fnv(ref.getT())}`, `fnv explored ${fnv(ref.getE())}`].join('\n') + '\n');
   console.log(`sauvegarde : ${json.length} caractères, clé ${key}`);
+}
+
+// 9. Créatures et gardiens. Math.random est remplacé par la même suite que Rng(4242) côté C++ (attentes des créatures comprises).
+// La foreuse reste immobile aux endroits choisis ; à chaque image paire après la 300e, elle frappe dans l'axe (ux, uy) écrit dans le fichier.
+{
+  const S = ref.fresh();  // avant le remplacement : fresh() tire la graine avec Math.random
+  const realRandom = Math.random;
+  Math.random = ref.rng(4242);
+  const w = ref.gen(1);
+  ref.setT(w.t);
+  ref.initMask(null);
+  ref.setFoes(w.foes);
+  ref.setBosses([0, 1, 2, 3].map((L) => { const c = ref.chamber(L), B = ref.BOSSES[L]; return { L, ch: c, x: (c.x1 + c.x2 + 1) / 2, y: c.y2 + 1 - 1.25, hp: B.hp, max: B.hp, dead: false, active: false, state: 'roam', t: 0, gx: 0, vx: 0, vy: 0, flash: 0 }; }));
+  S.up.hull = 6; S.tal.armor = 2;
+  ref.setS(S);
+  const P = ref.P, st = ref.st, dt = 1 / 60, xp0 = ref.getXp();
+  const place = (x, y) => { P.x = x; P.y = y; P.tx = Math.floor(P.x + ref.PW / 2); P.ty = Math.floor(P.y + ref.PH / 2); };
+  const f0 = w.foes[0];
+  place(f0.tx - 0.9, f0.ty + 1 - ref.PH - 0.001);
+  Object.assign(P, { vx: 0, vy: 0, hull: st.hull(), fuel: st.fuel(), hurtCd: 0, ramCd: 0 });
+  const c1 = ref.chamber(1);
+  const out = [`foes ${w.foes.length} foe0 ${f0.tx} ${f0.ty} chamber1 ${c1.x1} ${c1.x2} ${c1.y1} ${c1.y2}`];
+  const N = 2400;
+  for (let fr = 0; fr < N; fr++) {
+    if (fr === 700) { S.up.hull = 12; S.up.blade = 12; place(c1.x1 + 1.5, c1.y2 + 1 - ref.PH - 0.001); P.hull = st.hull(); }  // salle du gardien 2
+    if (fr === 1300) place(19.4, ref.DECK - ref.PH - 0.001);   // la foreuse quitte la salle : le gardien se rendort
+    if (fr === 1310) place(c1.x1 + 1.5, c1.y2 + 1 - ref.PH - 0.001);
+    P.ramCd -= dt; P.hurtCd -= dt;
+    const pcx = P.x + ref.PW / 2, pcy = P.y + ref.PH / 2;
+    let ux = 1, uy = 0, best = 1e9;
+    for (const f of ref.getFoes()) if (f.alive) { const dx = f.x + 0.35 - pcx, dy = f.y + 0.3 - pcy, d = dx * dx + dy * dy; if (d < best) { best = d; ux = dx; uy = dy; } }
+    const b1 = ref.getBosses()[1];
+    if (b1.active && fr >= 1000) { ux = b1.x - pcx; uy = b1.y - pcy; }
+    const l = Math.hypot(ux, uy) || 1; ux /= l; uy /= l;
+    if (fr % 2 === 0 && fr >= 300) { const f = ref.foeNear(ux, uy), b = !f ? ref.bossInFront(ux, uy) : null; if ((f || b) && P.ramCd <= 0) f ? ref.hitFoe(f) : ref.hitBoss(b); }
+    ref.updFoes(dt); ref.updBoss(dt); ref.updBullets(dt);
+    let sum = 0, alive = 0;
+    for (const f of ref.getFoes()) if (f.alive) { alive++; sum += f.x + 3 * f.y + 7 * f.vx + 11 * f.vy + f.hp + f.wait + f.dir + (f.grounded ? 1 : 0) + f.flash; }
+    let bs = 0; for (const u of ref.getBullets()) bs += u.x + 2 * u.y + u.life;
+    out.push(`f ${fr} ${ux} ${uy} ${P.x} ${P.y} ${P.hull} ${P.hurtCd} ${P.ramCd} ${S.coins} ${ref.getXp() - xp0} ${S.dead.length} ${alive} ${sum} ${ref.getBullets().length} ${bs}`);
+    for (const b of ref.getBosses()) if (b.active || (b.L === 1 && fr >= 700)) out.push(`b ${b.L} ${b.x} ${b.y} ${b.vx} ${b.vy} ${b.hp} ${b.state} ${b.t} ${b.gx} ${b.active ? 1 : 0} ${b.dead ? 1 : 0} ${b.flash}`);
+  }
+  out.push(`end ${S.boss.join(' ')} ${S.dead.join(',') || '-'} ${fnv(ref.getT())}`);
+  Math.random = realRandom;
+  fs.writeFileSync(path.join(outDir, 'creatures_1.txt'), out.join('\n') + '\n');
+  console.log(`créatures : ${N} images, ${S.dead.length} tuées, gardiens ${S.boss.join('')}, coque ${P.hull.toFixed(1)}, pièces ${S.coins}`);
 }

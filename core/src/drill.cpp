@@ -74,6 +74,8 @@ bool boxInTile(const Drill& d, const World& w, std::uint8_t tile) {
     return false;
 }
 
+}  // namespace
+
 void strand(Drill& d, const DrillStats& s, bool fuel, DrillEvents& ev) {
     (fuel ? ev.strandedFuel : ev.strandedHull) = true;  // le jeu retire la soute (moitié ou totalité)
     spawnOnDeck(d, s);
@@ -83,14 +85,18 @@ void strand(Drill& d, const DrillStats& s, bool fuel, DrillEvents& ev) {
     d.under = false;
 }
 
-void hurt(Drill& d, const DrillStats& s, double dmg, bool force, DrillEvents& ev) {
-    if (d.hurtCd > 0 && !force) return;
+bool hurt(Drill& d, const DrillStats& s, double dmg, bool force, DrillEvents& ev) {
+    if (d.hurtCd > 0 && !force) return false;
     const double real = dmg * (1 - .07 * s.armor);
     d.hull -= real;
     d.hurtCd = .6;
     ev.damage += real;
-    if (d.hull <= 0) strand(d, s, false, ev);
+    if (d.hull > 0) return false;
+    strand(d, s, false, ev);
+    return true;
 }
+
+namespace {
 
 // ---------- Bras d'accroche ----------
 void armBack(Arm& a, double ox, double oy) {  // le bras rentre ; s'il était planté, il part de sa prise
@@ -188,7 +194,7 @@ void spawnOnDeck(Drill& d, const DrillStats& s) {
 }
 
 void updateDrill(Drill& d, Terrain& t, const World& w, std::vector<std::uint8_t>& explored, const DrillStats& s, const DrillInput& in,
-                 double dt, DrillEvents& ev) {
+                 double dt, DrillEvents& ev, const RamFn& ram) {
     d.ramCd -= dt;
     d.hurtCd -= dt;
     const int ix = in.ix, iy = in.iy;
@@ -208,7 +214,10 @@ void updateDrill(Drill& d, Terrain& t, const World& w, std::vector<std::uint8_t>
 
     const double ux = std::cos(d.ang), uy = std::sin(d.ang);
     d.drilling = false;
-    if (in.drill) {  // le foret creuse un disque dans l'axe de la tête
+    if (in.drill && ram && ram(d, ux, uy)) {  // une créature ou un gardien devant : coup de bélier, pas de forage
+        busy = true;
+        d.digAcc = 0;
+    } else if (in.drill) {  // le foret creuse un disque dans l'axe de la tête
         const double tx = d.x + PW / 2 + ux * .45, ty = d.y + PH / 2 + uy * .45 - (std::fabs(uy) < .38 ? .05 : 0);
         d.digAcc = std::min(d.digAcc + s.dps * dt, 50.0);
         DigResult r = t.dig(tx, ty, .47, d.digAcc);

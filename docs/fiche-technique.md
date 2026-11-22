@@ -224,6 +224,7 @@ C++ : `imul` = multiplication `int32_t` avec débordement (passer par `uint32_t`
 - Fin de charge (mur ou délai) ou atterrissage (`vy > 4` au contact du sol) → `roam` (durée `max(0.8, 1.6 + 1.2·rand − 0.15L)`) + éclats (`shots`, +4 si PV < 50 %) en éventail vers le haut (angles de −0.12π à −0.88π), vitesse 6–8.5, gravité 9, dégâts 0.6×, durée 4 s, détruits par un pixel plein, touchent la foreuse à moins de 0.5 case.
 - Contact gardien–foreuse : distance < 1.65 case. Coup de foret possible à moins de 2.05 case, dans l'axe de la tête (cosinus > 0.35), délai 0.3 s.
 - Mort → sceau de la couche changé en ROCK, récompense, sauvegarde.
+- C++ (`core/creatures`) : mêmes règles, hasard tiré d'un `Rng` dans le même ordre que `Math.random`. Test `parite-creatures` : 2400 images comparées à la version JS avec `Math.random` remplacé par `rng(4242)` (larve qui mord puis meurt, réveil, charges, sauts, éclats, remise en place, défaite et sceau brisé). Particularité gardée : un éclat qui détruit la foreuse n'efface pas les autres éclats (`bullets = bullets.filter(...)` remplace l'effacement fait par `strand`). Affichage : créatures et sceaux seulement sur les cases explorées, tant que le halo de lumière n'est pas porté.
 
 ### 5.3 Pépites (L440–454)
 - Apparition au pixel retiré, `vx ∈ ±1.25`, `vy ∈ [−4, −2]` ; 200 max.
@@ -309,7 +310,7 @@ C++ (`core/save`) : même JSON, champs dans le même ordre, écrit octet pour oc
 2. **Ordre des tirages** de `rng` à la génération (§2.6), y compris les tirages conditionnels de la lave.
 3. **Tri stable** dans `digAt` (le tri de JS est stable depuis ES2019).
 4. `Math.floor` sur des négatifs = `std::floor` (pas une conversion en entier).
-5. `Math.random()` (non déterministe) sert aux effets, à l'IA des créatures, au double minerai et à la graine initiale : la parité ne s'applique pas à ces tirages.
+5. `Math.random()` (non déterministe) sert aux effets, à l'IA des créatures, au double minerai et à la graine initiale : la parité ne s'applique pas à ces tirages. Pour les créatures et les gardiens, le test remplace `Math.random` par `rng(4242)` afin de comparer quand même image par image.
 6. `dt` limité à 0.05 s : à garder, ou passer à un pas fixe en ayant vérifié que les tests donnent les mêmes résultats.
 
 ## 12. Tests de parité proposés

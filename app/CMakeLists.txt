@@ -1,4 +1,4 @@
-add_executable(filon src/main.cpp src/terrain_view.cpp src/drill_view.cpp src/base_menu.cpp)
+add_executable(filon src/main.cpp src/terrain_view.cpp src/drill_view.cpp src/base_menu.cpp src/creature_view.cpp)
 target_link_libraries(filon PRIVATE filon-core raylib)
 if(NOT MSVC)
   target_compile_options(filon PRIVATE -Wall -Wextra)

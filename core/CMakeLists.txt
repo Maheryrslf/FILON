@@ -9,6 +9,7 @@ add_library(filon-core STATIC
   src/economy.cpp
   src/json.cpp
   src/save.cpp
+  src/creatures.cpp
 )
 target_include_directories(filon-core PUBLIC include)
 

@@ -1,10 +1,11 @@
-// Filon : la foreuse dans la mine (terrain en pixels, physique, tourelle, forage, pépites, bras d'accroche, économie).
+// Filon : la foreuse dans la mine (terrain en pixels, physique, tourelle, forage, pépites, bras d'accroche, économie,
+// créatures et gardiens).
 // Souris : la foreuse suit le curseur ; clic gauche maintenu : forer ; clic droit maintenu : bras d'accroche.
 // Clavier : flèches ou ZQSD pour bouger, Espace pour forer, Maj pour le bras.
 // Échap ou B : menu de la base (le jeu est en pause pendant le menu). N deux fois : nouveau monde, progression gardée.
 // Sauvegarde au format de la version JS dans $XDG_DATA_HOME/filon/save.json (sinon ~/.local/share/filon/save.json) :
 // toutes les 5 s de jeu, à la base, après un achat ou une vente, à la fermeture du menu et de la fenêtre.
-// --capture fichier.png / --capture-menu fichier.png : parcours d'essai, image de l'écran, puis fin (vérification automatique).
+// --capture / --capture-menu / --capture-boss fichier.png : parcours d'essai (ou salle du 2e gardien), image de l'écran, puis fin.
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -16,7 +17,9 @@
 #include <vector>
 
 #include "base_menu.hpp"
+#include "creature_view.hpp"
 #include "drill_view.hpp"
+#include "filon/core/creatures.hpp"
 #include "filon/core/drill.hpp"
 #include "filon/core/economy.hpp"
 #include "filon/core/nuggets.hpp"
@@ -57,11 +60,12 @@ struct Game {  // une partie, restaurée comme boot() en JS
     Progress prog;
     Drill drill;
     std::vector<Nugget> nuggets;
-    Rng rng;  // effets et chance (vitesse des pépites, filon double)
+    Rng rng;  // hasard du jeu : pépites, filon double, créatures, gardiens
+    Creatures creatures;
     explicit Game(const SaveData& s)
         : seed(s.seed), world(restoredWorld(s)), terrain(world, s.mask), view(world, terrain, textureSeed(s.seed)),
           explored(s.explored.empty() ? std::vector<std::uint8_t>(static_cast<std::size_t>(W * H), 0) : s.explored), eco(s.eco), prog(s.prog),
-          nuggets(s.nuggets), rng(s.seed ^ 0x9e3779b9u) {
+          nuggets(s.nuggets), rng(s.seed ^ 0x9e3779b9u), creatures(makeCreatures(world, s.prog.dead, s.prog.boss, rng)) {
         for (int x = 0; x < W; ++x) explored[static_cast<std::size_t>(SURF * W + x)] = 1;
         if (!eco.furnace.last) eco.furnace.last = nowMs();
         const DrillStats st = drillStats(eco);
@@ -88,6 +92,13 @@ struct Game {  // une partie, restaurée comme boot() en JS
         s.nuggets = nuggets;
         return s;
     }
+};
+
+struct Float {  // chiffre qui monte au-dessus d'un coup porté
+    double x, y;
+    std::string text;
+    Color color;
+    double life;
 };
 
 std::uint32_t randomSeed() { return static_cast<std::uint32_t>(GetRandomValue(0, 2147483646)); }
@@ -117,7 +128,7 @@ void bar(int x, int y, int w, double frac, Color c, const std::string& label) {
 
 int main(int argc, char** argv) {
     const std::string mode = argc == 3 ? argv[1] : "";
-    const char* capture = (mode == "--capture" || mode == "--capture-menu") ? argv[2] : nullptr;
+    const char* capture = (mode == "--capture" || mode == "--capture-menu" || mode == "--capture-boss") ? argv[2] : nullptr;
     SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT);
     InitWindow(1280, 720, "Filon");
     SetExitKey(KEY_NULL);  // Échap ouvre le menu de la base
@@ -151,9 +162,26 @@ int main(int argc, char** argv) {
     double camX = 0, camY = 0, time = 0, lastFull = -9, lastSave = 0, confirmWorld = -9;
     bool camInit = false;
     int frame = 0;
+    std::vector<Float> floats;
     if (capture) {  // le parcours d'essai part du sol, pas du pont
         game->drill.x = 17.11;
         game->drill.y = SURF - PH - .001;
+    }
+    const bool bossTest = mode == "--capture-boss";
+    if (bossTest) {  // dans la salle du 2e gardien, coque renforcée, sans bouger
+        const Chamber c1 = chamber(1);
+        game->drill.x = c1.x1 + 1.5;
+        game->drill.y = c1.y2 + 1 - PH - .001;
+        game->drill.hull = 1e6;
+        for (int y = c1.y1; y <= c1.y2; ++y)
+            for (int x = c1.x1; x <= c1.x2; ++x) game->explored[static_cast<std::size_t>(y * W + x)] = 1;
+        for (int k = 0; k < NL; ++k)  // une créature de chaque couche, pour voir leur dessin
+            for (Foe& fo : game->creatures.foes)
+                if (fo.k == k) {
+                    fo.x = c1.x1 + 4 + 2.5 * k;
+                    fo.y = c1.y2 + 1 - FH - .001;
+                    break;
+                }
     }
 
     while (!WindowShouldClose()) {
@@ -210,7 +238,8 @@ int main(int argc, char** argv) {
             if (!in.ix && !in.iy && in.cursor && std::hypot(in.cdx, in.cdy) > .6) octant(in.cdx, in.cdy, in.ix, in.iy);
             in.drill = (!overUi && IsMouseButtonDown(MOUSE_BUTTON_LEFT)) || IsKeyDown(KEY_SPACE);
             in.grab = (!overUi && IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) || IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
-            if (capture) {  // parcours d'essai : rampe vers la droite en forant, puis bras d'accroche vers le haut à gauche
+            if (bossTest) in = DrillInput{};
+            else if (capture) {  // parcours d'essai : rampe vers la droite en forant, puis bras d'accroche vers le haut à gauche
                 in = DrillInput{};
                 in.cursor = true;
                 if (frame < 240) {
@@ -225,7 +254,35 @@ int main(int argc, char** argv) {
                 }
             }
 
-            updateDrill(d, game->terrain, game->world, game->explored, stats, in, dt, ev);
+            CreatureEvents cev;
+            const double ramDmg = effects(eco).ram;
+            updateDrill(d, game->terrain, game->world, game->explored, stats, in, dt, ev,
+                        [&](Drill& dr, double ux, double uy) { return ram(game->creatures, dr, ux, uy, ramDmg, cev); });
+            if (ev.strandedFuel || ev.strandedHull) resetActiveBosses(game->creatures);
+            updateCreatures(game->creatures, d, game->terrain, stats, dt, game->rng, cev, ev);
+            for (const CreatureEvents::Hit& h : cev.hits) floats.push_back({h.x, h.y, "-" + std::to_string(static_cast<long long>(std::lround(h.dmg))), WHITE, 1.2});
+            int gained = 0;
+            for (int i : cev.killedFoes) {
+                const Foe& fo = game->creatures.foes[static_cast<std::size_t>(i)];
+                const FoeDef& F = FOES[static_cast<std::size_t>(fo.k)];
+                eco.coins += F.coins;
+                gained += addXp(eco, F.xp);
+                game->prog.dead.push_back(fo.i);
+                floats.push_back({fo.x + FW / 2, fo.y + .2, "+" + std::to_string(F.coins), Color{255, 177, 59, 255}, 1.2});
+            }
+            if (cev.bossWoke >= 0) say(std::string(BOSSES[static_cast<std::size_t>(cev.bossWoke)].name) + " se réveille !");
+            if (cev.bossKilled >= 0) {
+                const int L = cev.bossKilled;
+                const BossDef& B = BOSSES[static_cast<std::size_t>(L)];
+                eco.coins += B.coins;
+                gained += addXp(eco, B.xp);
+                game->prog.boss[static_cast<std::size_t>(L)] = 1;
+                breakSeal(game->world, L);
+                say(std::string(B.name) + (L < NL - 1 ? " vaincu ! +" + std::to_string(B.coins) + " pièces. Le sceau est brisé."
+                                                      : " vaincu ! Tu as atteint le fond du monde. Bravo !"), 4);
+            }
+            if (gained) say("Niveau " + std::to_string(eco.lvl) + " ! +" + std::to_string(gained) + " point de talent");
+            if (!cev.killedFoes.empty() || cev.bossKilled >= 0) save();
             Progress& pr = game->prog;
             pr.play += dt;
             if (ev.depth > pr.maxDepth) pr.maxDepth = ev.depth;
@@ -270,6 +327,13 @@ int main(int argc, char** argv) {
             }
         }
         toastT -= dt;
+        if (!menu.open) {
+            for (Float& fl : floats) {
+                fl.y -= .9 * dt;
+                fl.life -= dt;
+            }
+            std::erase_if(floats, [](const Float& fl) { return fl.life <= 0; });
+        }
 
         // caméra amortie (plus douce à la verticale, à cause des marches de pixels)
         const double vwT = GetScreenWidth() / scale, vhT = GetScreenHeight() / scale;
@@ -312,10 +376,28 @@ int main(int argc, char** argv) {
             DrawRectangleRec({X, Y, 4, 4}, Color{static_cast<unsigned char>(o.glint >> 16), static_cast<unsigned char>(o.glint >> 8), static_cast<unsigned char>(o.glint), 255});
             DrawRectangleRec({X + 4, Y + 4, 4, 4}, Color{0, 0, 0, 89});
         }
+        // shortcut: sans le halo d'obscurité de la version JS, on cache ce qui est sur une case inexplorée ; à revoir avec l'éclairage
+        auto seen = [&](double x, double y) {
+            const int tx = static_cast<int>(std::floor(x)), ty = static_cast<int>(std::floor(y));
+            return tx >= 0 && tx < W && ty >= 0 && ty < H && game->explored[static_cast<std::size_t>(ty * W + tx)];
+        };
+        drawSeals(game->world, game->explored, x0, x1, y0, y1, time);
+        for (const Foe& fo : game->creatures.foes)
+            if (fo.alive && fo.x >= x0 - 1 && fo.x <= x1 + 1 && fo.y >= y0 - 1 && fo.y <= y1 + 1 && seen(fo.x + FW / 2, fo.y + FH / 2)) drawFoe(fo, d, time);
+        for (const Boss& bo : game->creatures.bosses)
+            if (!bo.dead && bo.y >= y0 - 3 && bo.y <= y1 + 3 && (bo.active || seen(bo.x, bo.y))) drawBoss(bo, d, time);
+        drawBullets(game->creatures);
         drawArm(d);
         drawDrill(d, time);
+        for (const Float& fl : floats) {
+            const unsigned char a = static_cast<unsigned char>(255 * std::clamp(fl.life * 1.5, 0.0, 1.0));
+            const int fx = static_cast<int>(fl.x * TS) - MeasureText(fl.text.c_str(), 12) / 2, fy = static_cast<int>(fl.y * TS);
+            DrawText(fl.text.c_str(), fx + 1, fy + 1, 12, Color{0, 0, 0, a});
+            DrawText(fl.text.c_str(), fx, fy, 12, Color{fl.color.r, fl.color.g, fl.color.b, a});
+        }
         EndMode2D();
 
+        if (!menu.open) drawBossBar(game->creatures);
         // relevés
         bar(12, 12, 300, d.fuel / stats.fuelMax, Color{255, 177, 59, 255}, "CARBURANT " + std::to_string(static_cast<int>(std::ceil(std::max(0.0, d.fuel)))));
         bar(12, 36, 300, d.hull / stats.hullMax, Color{255, 90, 74, 255}, "COQUE " + std::to_string(static_cast<int>(std::ceil(std::max(0.0, d.hull)))));

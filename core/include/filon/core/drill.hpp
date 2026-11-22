@@ -1,7 +1,8 @@
 #pragma once
 // La foreuse : physique, tête de forage, pentes, forage, propulseur, trappe, carburant, bras d'accroche
-// (fiche technique §4 et §6). Les coups portés aux créatures viendront ensuite.
+// (fiche technique §4 et §6). Les créatures sont dans creatures.hpp.
 #include <cstdint>
+#include <functional>
 #include <vector>
 
 #include "filon/core/physics.hpp"
@@ -78,8 +79,16 @@ bool atBase(const Drill& d);  // posée sur le pont, ou accrochée dessous avec 
 
 void spawnOnDeck(Drill& d, const DrillStats& s);  // retour sur le pont de la base, plein fait
 
+// Dégâts subis (réduits par le Blindage), au plus une fois toutes les 0,6 s sauf si force ; coque vide : rapatriement à la base
+// Renvoie vrai si la foreuse vient d'être détruite.
+bool hurt(Drill& d, const DrillStats& s, double dmg, bool force, DrillEvents& ev);
+
+// Coup de bélier : appelé quand le foret tourne, avec l'axe (ux, uy) de la tête. Renvoie vrai si une cible est devant
+// (le forage est alors suspendu) ; c'est lui qui porte le coup quand d.ramCd <= 0.
+using RamFn = std::function<bool(Drill& d, double ux, double uy)>;
+
 // Une image de simulation. explored : cases découvertes (W * H), mises à jour autour de la foreuse.
 void updateDrill(Drill& d, Terrain& t, const World& w, std::vector<std::uint8_t>& explored, const DrillStats& s, const DrillInput& in,
-                 double dt, DrillEvents& ev);
+                 double dt, DrillEvents& ev, const RamFn& ram = {});
 
 }  // namespace filon
