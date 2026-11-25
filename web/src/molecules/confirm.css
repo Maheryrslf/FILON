@@ -1,0 +1,5 @@
+/* Molécule : boîte de confirmation (normale ou dangereuse) */
+.danger{display:grid;gap:8px;border:1px solid var(--danger);border-radius:4px;padding:10px 12px}
+.danger p{margin:0}
+.confirm{display:grid;gap:8px;border:1px solid var(--accent);border-radius:4px;padding:10px 12px}
+.confirm p{margin:0;line-height:1.45}

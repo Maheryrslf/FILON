@@ -1,0 +1,6 @@
+/* Molécule : ligne d’article (titre, détail, prix ou bouton) */
+.row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;align-items:center;background:var(--panel-2);border-radius:4px;padding:10px 12px}
+.row h4{margin:0;font:800 16px var(--font-display);letter-spacing:.02em;display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.row h4 small{font:600 11px var(--font-num);color:var(--muted)}
+.row p{margin:2px 0 0;color:var(--muted);font-size:12.5px;line-height:1.4}
+.row > b{font:700 14px var(--font-num);color:var(--accent)}

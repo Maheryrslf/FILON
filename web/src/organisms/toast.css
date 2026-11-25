@@ -1,0 +1,4 @@
+/* Organisme : message temporaire */
+#toast{position:fixed;z-index:4;left:50%;top:calc(env(safe-area-inset-top,0px) + 164px);transform:translateX(-50%);width:max-content;max-width:min(88vw,420px);
+  background:rgba(18,13,11,.94);border:1px solid var(--accent);border-radius:4px;padding:8px 14px;font-size:14px;line-height:1.35;text-align:center;opacity:0;transition:opacity .2s;pointer-events:none}
+#toast.on{opacity:1}

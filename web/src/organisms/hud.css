@@ -1,0 +1,4 @@
+/* Organisme : relevés en haut de l’écran */
+#hud{position:fixed;inset:0 0 auto 0;z-index:2;display:flex;gap:10px;align-items:flex-start;pointer-events:none;
+  padding:calc(env(safe-area-inset-top,0px) + 10px) max(12px,env(safe-area-inset-right,0px)) 0 max(12px,env(safe-area-inset-left,0px))}
+.meters{display:grid;gap:6px;flex:1;min-width:0;max-width:320px}

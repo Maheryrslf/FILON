@@ -1,0 +1,4 @@
+/* Organisme : jauge du gardien réveillé */
+#boss{position:fixed;z-index:2;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 84px);width:min(78vw,420px);pointer-events:none;text-align:center}
+#bossName{font:800 14px var(--font-display);letter-spacing:.12em;text-transform:uppercase;color:var(--fg);text-shadow:0 1px 2px #000;margin-bottom:4px}
+#boss .meter i{background:var(--boss)}

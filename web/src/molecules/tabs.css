@@ -1,0 +1,6 @@
+/* Molécule : barre d’onglets */
+.tabs{display:flex;overflow-x:auto;border-bottom:1px solid var(--line);flex:none;padding-inline:max(8px,env(safe-area-inset-left,0px)) max(8px,env(safe-area-inset-right,0px))}
+.tabs button{flex:1 0 auto;background:none;border:0;color:var(--muted);padding:14px 10px 12px;font:800 13px var(--font-display);letter-spacing:.08em;text-transform:uppercase}
+.tabs button[aria-selected="true"]{color:var(--accent);box-shadow:inset 0 -3px var(--accent)}
+.tabs .close{color:var(--fg)}
+.tabs button:focus-visible{outline:2px solid var(--fg);outline-offset:2px}

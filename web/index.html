@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Filon</title>
+<!-- Page : assemble le modèle (templates/game.css) et les organismes ci-dessous.
+     Ce fichier s'ouvre tel quel dans un navigateur ; node tools/build_web.js en fait un seul fichier hors ligne. -->
+<link rel="stylesheet" href="src/tokens/tokens.css">
+<link rel="stylesheet" href="src/atoms/button.css">
+<link rel="stylesheet" href="src/atoms/meter.css">
+<link rel="stylesheet" href="src/atoms/coin.css">
+<link rel="stylesheet" href="src/atoms/gem.css">
+<link rel="stylesheet" href="src/atoms/text.css">
+<link rel="stylesheet" href="src/molecules/readout.css">
+<link rel="stylesheet" href="src/molecules/row.css">
+<link rel="stylesheet" href="src/molecules/sum.css">
+<link rel="stylesheet" href="src/molecules/option.css">
+<link rel="stylesheet" href="src/molecules/confirm.css">
+<link rel="stylesheet" href="src/molecules/tabs.css">
+<link rel="stylesheet" href="src/organisms/hud.css">
+<link rel="stylesheet" href="src/organisms/touch-buttons.css">
+<link rel="stylesheet" href="src/organisms/menu-button.css">
+<link rel="stylesheet" href="src/organisms/boss-bar.css">
+<link rel="stylesheet" href="src/organisms/toast.css">
+<link rel="stylesheet" href="src/organisms/sheet.css">
+<link rel="stylesheet" href="src/organisms/start-screen.css">
+<link rel="stylesheet" href="src/templates/game.css">
+</head>
+<body style="margin:0">
+<canvas id="game" aria-label="Zone de jeu"></canvas>
+<div id="hud">
+  <div class="meters">
+    <div class="meter" id="fuelM"><i id="fuelI"></i><span id="fuelT">Carburant</span></div>
+    <div class="meter hull"><i id="hullI"></i><span id="hullT">Coque</span></div>
+  </div>
+  <div class="readout">
+    <div><b id="coins">0</b> <span class="coin"></span></div>
+    <div id="depth">Surface</div>
+    <div id="cargoL">Soute <span id="cargo">0/10</span></div>
+    <div>Niv. <span id="lvl">1</span></div>
+  </div>
+</div>
+<div id="boss" hidden><div id="bossName"></div><div class="meter"><i id="bossI"></i></div></div>
+<div id="toast" role="status" aria-live="polite"></div>
+<button id="menuBtn" type="button">Menu</button>
+<button id="drillBtn" type="button" hidden>Forer</button>
+<button id="grabBtn" type="button" hidden>Bras</button>
+<section id="sheet" hidden aria-label="Base">
+  <div class="sheet-in"><nav id="tabs" class="tabs" role="tablist"></nav><div id="sbody" class="sbody"></div></div>
+</section>
+<div id="start">
+  <div class="start-in">
+    <p class="kicker">Forage minier · 100 % hors ligne</p>
+    <h1>FILON</h1>
+    <p class="tag">Creuse, ramasse le minerai, fonds-le en lingots, améliore ta foreuse et descends affronter les gardiens des quatre couches.</p>
+    <button id="play" class="btn big" type="button">Creuser</button>
+    <p class="hint">Souris : la foreuse suit le curseur · clic gauche : forer · clic droit : bras d’accroche<br>Clavier : flèches ou ZQSD, Espace pour forer, Maj pour le bras<br>Mobile : joystick, boutons Forer et Bras</p>
+  </div>
+</div>
+
+<script src="src/atoms/atoms.js"></script>
+<script src="src/molecules/molecules.js"></script>
+<script src="src/organisms/organisms.js"></script>
+<script src="src/game.js"></script>
+</body>
+</html>

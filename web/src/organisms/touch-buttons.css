@@ -1,0 +1,4 @@
+/* Organisme : boutons tactiles Forer et Bras */
+#drillBtn{position:fixed;z-index:3;right:max(14px,env(safe-area-inset-right,0px));bottom:calc(env(safe-area-inset-bottom,0px) + 18px);width:84px;height:84px;border-radius:50%;border:2px solid var(--line);background:rgba(30,22,19,.88);color:var(--fg);font:800 15px var(--font-display);letter-spacing:.06em;text-transform:uppercase;touch-action:none}
+#drillBtn.on,#grabBtn.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+#grabBtn{position:fixed;z-index:3;right:max(14px,env(safe-area-inset-right,0px));bottom:calc(env(safe-area-inset-bottom,0px) + 112px);width:72px;height:72px;border-radius:50%;border:2px solid var(--line);background:rgba(30,22,19,.88);color:var(--fg);font:800 14px var(--font-display);letter-spacing:.06em;text-transform:uppercase;touch-action:none}

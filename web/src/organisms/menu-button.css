@@ -1,0 +1,6 @@
+/* Organisme : bouton Menu / Base */
+#menuBtn{position:fixed;z-index:3;right:max(14px,env(safe-area-inset-right,0px));top:calc(env(safe-area-inset-top,0px) + 100px);
+  min-width:84px;height:52px;border-radius:26px;border:2px solid var(--line);background:rgba(30,22,19,.88);color:var(--fg);
+  font:800 16px var(--font-display);letter-spacing:.06em;text-transform:uppercase}
+#menuBtn.hot{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);box-shadow:0 0 0 4px rgba(255,177,59,.25)}
+#menuBtn:focus-visible{outline:2px solid var(--fg);outline-offset:2px}

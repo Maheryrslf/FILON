@@ -1,0 +1,4 @@
+/* Molécule : relevés chiffrés (pièces, profondeur, soute, niveau) */
+.readout{font:600 12px/1.55 var(--font-num);text-align:right;background:rgba(0,0,0,.6);border:1px solid var(--line);border-radius:3px;padding:4px 9px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.readout b{color:var(--accent);font-size:14px}
+#cargoL.full{color:var(--danger)}

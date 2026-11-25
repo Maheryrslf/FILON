@@ -1,0 +1,5 @@
+/* Molécule : réglage (libellé + curseur, case ou liste) */
+.opt{display:flex;justify-content:space-between;align-items:center;gap:16px;background:var(--panel-2);border-radius:4px;padding:10px 12px;font-weight:600}
+.opt input[type=range]{width:55%;accent-color:var(--accent)}
+.opt input[type=checkbox]{width:22px;height:22px;accent-color:var(--accent)}
+.opt select{background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:4px;padding:6px}
