@@ -59,7 +59,7 @@ void hitFoe(Foe& f, Drill& d, double dmg, CreatureEvents& ev) {
     f.hp -= dmg;
     f.flash = .15;
     d.ramCd = .32;
-    ev.hits.push_back({f.x + FW / 2, f.y, dmg, FOES[static_cast<std::size_t>(f.k)].color});
+    ev.hits.push_back({f.x + FW / 2, f.y, dmg, f.x + FW / 2, f.y + FH / 2, FOES[static_cast<std::size_t>(f.k)].color, f.hp <= 0, false});
     if (f.hp <= 0) {
         f.alive = false;
         ev.killedFoes.push_back(f.i);
@@ -70,7 +70,7 @@ void hitBoss(Creatures& c, Boss& b, Drill& d, double dmg, CreatureEvents& ev) {
     b.hp -= dmg;
     b.flash = .12;
     d.ramCd = .3;
-    ev.hits.push_back({b.x, b.y - 1.3, dmg, BOSSES[static_cast<std::size_t>(b.L)].color});
+    ev.hits.push_back({b.x, b.y - 1.3, dmg, b.x, b.y, BOSSES[static_cast<std::size_t>(b.L)].color, b.hp <= 0, true});
     if (b.hp <= 0) {
         b.dead = true;
         b.active = false;
@@ -179,7 +179,10 @@ void updateBosses(Creatures& c, Drill& d, const DrillStats& s, double dt, Rng& r
             b.vx = 0;
             b.t = std::max(.8, 1.6 + rng.next() * 1.2 - b.L * .15);
             newGoal(b, rng);
-            if (wall || landed) ev.bossLanded = true;
+            if (wall || landed) {
+                ev.bossLanded = true;
+                ev.bossShake = std::max(ev.bossShake, landed ? .4 : .2);
+            }
             const int n = B.shots ? B.shots + (b.hp < b.max / 2 ? 4 : 0) : 0;  // éclats projetés en cloche
             for (int i = 0; i < n; ++i) {
                 const double a = -PI * (.12 + .76 * i / std::max(1, n - 1)), sp = 6 + rng.next() * 2.5;

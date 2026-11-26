@@ -37,4 +37,7 @@ void shadePixel(Chunk& c, const Terrain& t, int sx, int sy);
 // Après l'extraction d'un filon : recalcule les pixels de la case qui appartiennent au bloc.
 void recolorTile(Chunk& c, const World& w, const Terrain& t, int texSeed, int tx, int ty);
 
+// Couleur moyenne d'une case (éclats de forage) : tileColor() en JS. Renvoie 0xRRGGBB.
+std::uint32_t tileColor(std::uint8_t t, int y);
+
 }  // namespace filon
