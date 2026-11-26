@@ -38,6 +38,12 @@ double channel(std::uint32_t rgb, int c) { return static_cast<double>((rgb >> (1
 
 }  // namespace
 
+std::uint32_t tileColor(std::uint8_t t, int y) {
+    if (isOre(t)) return ORES[t - ORE_FIRST].color;
+    const int* p = PAL[std::max(0, layerOf(y))][t == SOFT ? 0 : t == HARD ? 2 : 1][1];
+    return static_cast<std::uint32_t>(p[0]) << 16 | static_cast<std::uint32_t>(p[1]) << 8 | static_cast<std::uint32_t>(p[2]);
+}
+
 Rgb texel(const World& w, int s, double u, double v, double hc, double sh) {
     const int ty = ifloor(v / TS), tx = ifloor(u / TS), L = layerOf(ty);
     double r, g, b;

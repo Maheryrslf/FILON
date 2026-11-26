@@ -61,13 +61,16 @@ struct Creatures {
 // Ce qui s'est passé ; le jeu en tire pièces, XP, sauvegarde, messages et effets
 struct CreatureEvents {
     struct Hit {
-        double x, y, dmg;
+        double x, y, dmg;    // position du chiffre affiché
+        double cx, cy;       // centre de la cible (éclats)
         std::uint32_t color;
+        bool kill, boss;
     };
     std::vector<Hit> hits;
     std::vector<int> killedFoes;  // indices de création
     int bossWoke = -1, bossKilled = -1;
     bool bossLanded = false, shots = false;
+    double bossShake = 0;  // secousse d'un gardien qui retombe (0,4) ou heurte un mur (0,2)
 };
 
 // Comme boot() en JS : l'attente de chaque créature est tirée de rng dans l'ordre de création (mkFoe dans gen()) ;
