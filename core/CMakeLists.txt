@@ -10,6 +10,8 @@ add_library(filon-core STATIC
   src/json.cpp
   src/save.cpp
   src/creatures.cpp
+  src/synth.cpp
+  src/fx.cpp
 )
 target_include_directories(filon-core PUBLIC include)
 

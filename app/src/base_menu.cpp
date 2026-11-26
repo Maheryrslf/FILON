@@ -41,7 +41,8 @@ void needBase(float x, float& y) {
 
 }  // namespace
 
-std::string BaseMenu::draw(Economy& e, Drill& d, bool atBase) {
+std::string BaseMenu::draw(Economy& e, Drill& d, bool atBase, Progress& prog) {
+    action = MenuAction::None;
     if (!open) return {};
     std::string msg;
     const float sw = static_cast<float>(GetScreenWidth()), sh = static_cast<float>(GetScreenHeight());
@@ -51,9 +52,9 @@ std::string BaseMenu::draw(Economy& e, Drill& d, bool atBase) {
     DrawRectangleRec({x0, y0, w, 3}, ACCENT);
 
     // onglets
-    static const char* tabs[] = {"COMPTOIR", "FONDERIE", "ATELIER", "TALENTS"};
-    const float tw = (w - 90) / 4;
-    for (int i = 0; i < 4; ++i) {
+    static const char* tabs[] = {"COMPTOIR", "FONDERIE", "ATELIER", "TALENTS", "OPTIONS"};
+    const float tw = (w - 90) / 5;
+    for (int i = 0; i < 5; ++i) {
         const Rectangle r{x0 + i * tw, y0 + 3, tw, 40};
         const bool hover = CheckCollisionPointRec(GetMousePosition(), r);
         const int fw = MeasureText(tabs[i], 16);
@@ -102,6 +103,7 @@ std::string BaseMenu::draw(Economy& e, Drill& d, bool atBase) {
         if (button({x, y + 6, cw, 44}, "TOUT VENDRE", atBase && total > 0, true)) {
             const int v = sellAll(e);
             msg = "Vendu : +" + coins(v) + " pièces";
+            action = MenuAction::Sell;
         }
         DrawText("Le minerai fondu en lingots vaut 2,5 fois plus.", static_cast<int>(x), static_cast<int>(y + 60), 14, MUTED);
     } else if (tab == 1) {  // Fonderie
@@ -129,6 +131,7 @@ std::string BaseMenu::draw(Economy& e, Drill& d, bool atBase) {
         if (button({x, y + 4, cw, 44}, buf, atBase && cargoCount(e) > 0, true)) {
             smeltAll(e);
             msg = "Minerai versé dans le four.";
+            action = MenuAction::Smelt;
         }
         y += 58;
         std::snprintf(buf, sizeof buf, "%.1f s par minerai. Le four tourne aussi jeu fermé, jusqu'à 8 h. Les lingots se vendent au comptoir.", per);
@@ -153,10 +156,11 @@ std::string BaseMenu::draw(Economy& e, Drill& d, bool atBase) {
                 if (u == TANK) d.fuel = drillStats(e).fuelMax;
                 if (u == HULL) d.hull = drillStats(e).hullMax;
                 msg = std::string(def.name) + " niveau " + std::to_string(e.up[i]);
+                action = MenuAction::Buy;
             }
             y += rh;
         }
-    } else {  // Talents
+    } else if (tab == 3) {  // Talents
         const int pts = freePoints(e);
         std::snprintf(buf, sizeof buf, "Niveau %d   %d/%d XP   %d point%s à placer", e.lvl, static_cast<int>(e.xp), xpNeed(e.lvl), pts, pts > 1 ? "s" : "");
         DrawText(buf, static_cast<int>(x), static_cast<int>(y), 18, ACCENT);
@@ -167,11 +171,52 @@ std::string BaseMenu::draw(Economy& e, Drill& d, bool atBase) {
             std::snprintf(buf, sizeof buf, "%s  %d/%d", t.name, e.tal[i], TALENT_MAX);
             DrawText(buf, static_cast<int>(x + 10), static_cast<int>(y + 6), 16, FG);
             DrawText(t.desc, static_cast<int>(x + 10), static_cast<int>(y + 27), 14, MUTED);
-            if (button({x + cw - 70, y + 8, 60, 32}, "+1", pts > 0 && e.tal[i] < TALENT_MAX) && addTalent(e, static_cast<Talent>(i)))
+            if (button({x + cw - 70, y + 8, 60, 32}, "+1", pts > 0 && e.tal[i] < TALENT_MAX) && addTalent(e, static_cast<Talent>(i))) {
                 msg = std::string(t.name) + " niveau " + std::to_string(e.tal[i]);
+                action = MenuAction::Buy;
+            }
             y += 54;
         }
         DrawText("Chaque niveau donne 1 point. L'XP vient du forage, des créatures et des gardiens.", static_cast<int>(x), static_cast<int>(y + 4), 14, MUTED);
+    } else {  // Options : volumes (pas de 5 %, comme les curseurs de la version web), statistiques
+        auto slider = [&](const char* name, double& v) {
+            row(x, y, cw, 44);
+            DrawText(name, static_cast<int>(x + 12), static_cast<int>(y + 13), 18, FG);
+            const Rectangle bar{x + cw * .35f, y + 17, cw * .5f, 10};
+            const Vector2 m = GetMousePosition();
+            if (IsMouseButtonDown(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(m, {bar.x - 12, y, bar.width + 24, 44}))
+                v = std::round(std::clamp((m.x - bar.x) / bar.width, 0.f, 1.f) * 20) / 20;
+            DrawRectangleRounded(bar, .5f, 4, Color{0, 0, 0, 150});
+            DrawRectangleRounded({bar.x, bar.y, static_cast<float>(bar.width * v), bar.height}, .5f, 4, ACCENT);
+            DrawCircleV({bar.x + static_cast<float>(bar.width * v), bar.y + 5}, 9, FG);
+            const std::string pct = std::to_string(static_cast<int>(std::lround(v * 100))) + " %";
+            DrawText(pct.c_str(), static_cast<int>(x + cw - 12 - MeasureText(pct.c_str(), 16)), static_cast<int>(y + 14), 16, MUTED);
+            y += 50;
+        };
+        slider("Musique", prog.set.music);
+        slider("Effets", prog.set.sfx);
+        {  // case à cocher : secousses de l'écran (à couper si elles gênent)
+            const Rectangle line{x, y, cw, 44}, box{x + cw - 38, y + 11, 22, 22};
+            const bool hover = CheckCollisionPointRec(GetMousePosition(), line);
+            row(x, y, cw, 44);
+            DrawText("Secousses de l'écran", static_cast<int>(x + 12), static_cast<int>(y + 13), 18, FG);
+            DrawRectangleRounded(box, .25f, 4, prog.set.shake ? ACCENT : Color{0, 0, 0, 150});
+            DrawRectangleRoundedLinesEx(box, .25f, 4, 2, hover ? FG : LINE);
+            if (prog.set.shake) {  // coche
+                DrawLineEx({box.x + 5, box.y + 11}, {box.x + 9, box.y + 16}, 3, INK);
+                DrawLineEx({box.x + 9, box.y + 16}, {box.x + 17, box.y + 6}, 3, INK);
+            }
+            if (hover && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) prog.set.shake = !prog.set.shake;
+            y += 50;
+        }
+        int beaten = 0;
+        for (int b : prog.boss) beaten += b != 0;
+        const int min = static_cast<int>(prog.play / 60);
+        std::snprintf(buf, sizeof buf, "Record : %d m   Gardiens vaincus : %d/4   Temps de jeu : %d h %02d min", static_cast<int>(prog.maxDepth) * 2, beaten, min / 60,
+                      min % 60);
+        DrawText(buf, static_cast<int>(x), static_cast<int>(y + 6), 16, MUTED);
+        DrawText("Aucune pub, aucun traqueur, aucune connexion :", static_cast<int>(x), static_cast<int>(y + 32), 14, MUTED);
+        DrawText("la partie est enregistrée sur cet appareil seulement.", static_cast<int>(x), static_cast<int>(y + 50), 14, MUTED);
     }
     return msg;
 }

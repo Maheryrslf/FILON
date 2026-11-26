@@ -22,10 +22,12 @@
 #include "drill_view.hpp"
 #include "filon/core/creatures.hpp"
 #include "filon/core/drill.hpp"
+#include "filon/core/fx.hpp"
 #include "filon/core/economy.hpp"
 #include "filon/core/nuggets.hpp"
 #include "filon/core/random.hpp"
 #include "filon/core/save.hpp"
+#include "filon/core/synth.hpp"
 #include "filon/core/texture.hpp"
 #include "raylib.h"
 #include "rlgl.h"
@@ -103,6 +105,11 @@ struct Float {  // chiffre qui monte au-dessus d'un coup porté
     double life;
 };
 
+Synth* gSynth = nullptr;  // lu par le fil audio de raylib
+void audioCallback(void* buffer, unsigned int frames) {
+    if (gSynth) gSynth->render(static_cast<float*>(buffer), static_cast<int>(frames));
+}
+
 std::uint32_t randomSeed() { return static_cast<std::uint32_t>(GetRandomValue(0, 2147483646)); }
 
 SaveData freshSave(std::uint32_t seed) {
@@ -137,6 +144,22 @@ int main(int argc, char** argv) {
     SetExitKey(KEY_NULL);  // Échap ouvre le menu de la base
     SetTargetFPS(60);
 
+    // son : synthétisé à la volée par le fil audio (rien pendant les captures d'essai)
+    Synth synth(44100, randomSeed());
+    AudioStream stream{};
+    if (!capture) {
+        InitAudioDevice();
+        if (IsAudioDeviceReady()) {
+            SetAudioStreamBufferSizeDefault(1024);
+            stream = LoadAudioStream(44100, 32, 1);
+            gSynth = &synth;
+            SetAudioStreamCallback(stream, audioCallback);
+            PlayAudioStream(stream);
+        }
+    }
+    auto play = [&](Sfx s) {
+        if (gSynth) synth.sfx(s);
+    };
     std::string toast;
     double toastT = 0;
     auto say = [&](const std::string& m, double t = 2.8) {
@@ -162,7 +185,8 @@ int main(int argc, char** argv) {
         if (!path.empty() && !writeFileAtomic(path, toJson(game->snapshot()))) say("Impossible d'enregistrer la partie dans " + path, 4);
     };
     BaseMenu menu;
-    double camX = 0, camY = 0, time = 0, lastFull = -9, lastSave = 0, confirmWorld = -9;
+    double camSX = 0, camSY = 0, time = 0, lastFull = -9, lastSave = 0, confirmWorld = -9, lastBump = -9;  // camSX, camSY : caméra amortie
+    Fx fx(randomSeed());  // particules et secousses
     bool camInit = false;
     int frame = 0;
     std::vector<Float> floats;
@@ -235,8 +259,8 @@ int main(int argc, char** argv) {
             const Vector2 m = GetMousePosition();
             const double pcx = d.x + PW / 2, pcy = d.y + PH / 2;
             in.cursor = IsCursorOnScreen() && !overUi;
-            in.cdx = (camX + m.x / scale) / TS - pcx;
-            in.cdy = (camY + m.y / scale) / TS - pcy;
+            in.cdx = (camSX + m.x / scale) / TS - pcx;
+            in.cdy = (camSY + m.y / scale) / TS - pcy;
             in.ix = (IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D)) - (IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_A));
             in.iy = (IsKeyDown(KEY_DOWN) || IsKeyDown(KEY_S)) - (IsKeyDown(KEY_UP) || IsKeyDown(KEY_W));
             if (!in.ix && !in.iy && in.cursor && std::hypot(in.cdx, in.cdy) > .6) octant(in.cdx, in.cdy, in.ix, in.iy);
@@ -287,6 +311,41 @@ int main(int argc, char** argv) {
             }
             if (gained) say("Niveau " + std::to_string(eco.lvl) + " ! +" + std::to_string(gained) + " point de talent");
             if (!cev.killedFoes.empty() || cev.bossKilled >= 0) save();
+            // bruitages, aux mêmes moments que dans la version JS
+            if (ev.digSound) play(Sfx::Dig);
+            // effets : éclats, poussière, flammes, secousses (aux mêmes moments que burst() et shake() en JS)
+            fx.drill(d);
+            if (ev.digSound) fx.burst(ev.digX, ev.digY, tileColor(ev.digTile, static_cast<int>(std::floor(ev.digY))), 2, 2);
+            if (ev.landImpact > 0) fx.burst(d.x + PW / 2, d.y + PH, 0xb59a80, static_cast<int>(std::lround(ev.landImpact)), 2.5);
+            if (ev.damage > 0) {
+                fx.burst(d.x + PW / 2, d.y + PH / 2, 0xff8a5a, 6);
+                fx.shake(.25);
+            }
+            for (const CreatureEvents::Hit& h : cev.hits) {
+                fx.burst(h.cx, h.cy, h.color, h.boss ? 5 : 6);
+                if (h.kill && !h.boss) fx.burst(h.cx, h.cy, h.color, 16, 4);
+            }
+            if (cev.bossKilled >= 0) {
+                const Boss& bo = game->creatures.bosses[static_cast<std::size_t>(cev.bossKilled)];
+                fx.burst(bo.x, bo.y, BOSSES[static_cast<std::size_t>(bo.L)].color, 60, 6);
+                fx.shake(.6);
+            }
+            if (cev.bossWoke >= 0) fx.shake(.4);
+            if (cev.bossShake > 0) fx.shake(cev.bossShake);
+            if (!cev.hits.empty()) play(Sfx::Hit);
+            if (!cev.killedFoes.empty()) play(Sfx::Kill);
+            if (cev.bossWoke >= 0) play(Sfx::Roar);
+            if (cev.bossKilled >= 0) play(Sfx::Win);
+            if (cev.bossLanded || ev.landImpact > 0) play(Sfx::Land);
+            if (cev.shots) play(Sfx::Shoot);
+            if (ev.damage > 0) play(Sfx::Hurt);
+            if (ev.strandedFuel || ev.strandedHull) play(Sfx::Fail);
+            if (ev.hatchToggled || ev.armHooked) play(Sfx::Bump);
+            if (ev.bump && time - lastBump > 2) {  // foret bloqué par la roche mère ou un sceau
+                lastBump = time;
+                play(Sfx::Bump);
+            }
+            if (gained) play(Sfx::Lvl);
             Progress& pr = game->prog;
             pr.play += dt;
             if (ev.depth > pr.maxDepth) pr.maxDepth = ev.depth;
@@ -298,8 +357,13 @@ int main(int argc, char** argv) {
                 pr.fallTip = 1;
                 say("Chute rude : garde le propulseur appuyé pour freiner, ou accroche le bras.");
             }
+            for (int ti : game->terrain.changedTiles)  // filon extrait : éclats de la couleur du minerai (avant que la vue ne vide la liste)
+                fx.burst(ti % W + .5, ti / W + .5, ORES[game->world.original[static_cast<std::size_t>(ti)] - ORE_FIRST].glint, 8);
             game->view.sync(game->terrain);
-            if (const int lv = addXp(eco, game->terrain.xpGained)) say("Niveau " + std::to_string(eco.lvl) + " ! +" + std::to_string(lv) + " point de talent");
+            if (const int lv = addXp(eco, game->terrain.xpGained)) {
+                say("Niveau " + std::to_string(eco.lvl) + " ! +" + std::to_string(lv) + " point de talent");
+                play(Sfx::Lvl);
+            }
             game->terrain.xpGained = 0;
             for (const FreedOre& f : game->terrain.freed) {  // une pépite jaillit de chaque filon dégagé (deux avec Filon double)
                 const int n = 1 + (game->rng.next() < .06 * eco.tal[LUCK] ? 1 : 0);
@@ -316,9 +380,11 @@ int main(int argc, char** argv) {
                 ++eco.cargo[id - ORE_FIRST];
                 say(std::string("+1 ") + ORES[id - ORE_FIRST].name, 1.2);
             }
+            if (!up.collected.empty()) play(Sfx::Ore);
             if (up.cargoFull && time - lastFull > 2.5) {
                 lastFull = time;
                 say("Soute pleine : remonte vendre ou fondre.");
+                play(Sfx::Bump);
             }
             if (ev.strandedFuel) say("Panne sèche ! Remorquée à la base, la moitié de la soute est perdue.");
             if (ev.strandedHull) say("Foreuse détruite ! Rapatriée à la base, la soute est perdue.");
@@ -331,6 +397,11 @@ int main(int argc, char** argv) {
             }
         }
         toastT -= dt;
+        fx.update(dt, !eco.furnace.queue.empty());  // comme updParticles en JS : aussi pendant le menu (fumée, secousse qui finit)
+        if (gSynth) {  // volumes du menu Options, musique plus rapide pendant un combat de gardien
+            synth.setVolumes(game->prog.set.music, game->prog.set.sfx);
+            synth.music(std::any_of(game->creatures.bosses.begin(), game->creatures.bosses.end(), [](const Boss& b) { return b.active; }));
+        }
         if (!menu.open) {
             for (Float& fl : floats) {
                 fl.y -= .9 * dt;
@@ -344,14 +415,17 @@ int main(int argc, char** argv) {
         double tx = (d.x + PW / 2) * TS - vwT / 2, ty = (d.y + PH / 2) * TS - vhT * .45;
         tx = W * TS <= vwT ? (W * TS - vwT) / 2 : std::clamp(tx, 0.0, W * TS - vwT);
         ty = std::clamp(ty, -3.0 * TS, H * TS - vhT);
-        if (!camInit || std::fabs(tx - camX) > 6 * TS || std::fabs(ty - camY) > 6 * TS) {
-            camX = tx;
-            camY = ty;
+        if (!camInit || std::fabs(tx - camSX) > 6 * TS || std::fabs(ty - camSY) > 6 * TS) {
+            camSX = tx;
+            camSY = ty;
             camInit = true;
         } else {
-            camX += (tx - camX) * (1 - std::exp(-dt * 10));
-            camY += (ty - camY) * (1 - std::exp(-dt * 6));
+            camSX += (tx - camSX) * (1 - std::exp(-dt * 10));
+            camSY += (ty - camSY) * (1 - std::exp(-dt * 6));
         }
+        double shakeX = 0, shakeY = 0;  // les secousses déplacent l'image, pas la caméra amortie ; coupées dans les Options
+        if (game->prog.set.shake) fx.shakeOffset(shakeX, shakeY);
+        const double camX = camSX + shakeX, camY = camSY + shakeY;
 
         BeginDrawing();
         ClearBackground(Color{13, 11, 10, 255});
@@ -400,6 +474,12 @@ int main(int argc, char** argv) {
                      std::max(0.f, skyBottom), static_cast<float>(stats.light * TS * scale), bossAwake);
         BeginMode2D(cam);
         drawRadar(game->world, d, static_cast<int>(effects(eco).radar), stats.light, time);
+        for (const Particle& p : fx.particles()) {  // par-dessus le halo, comme en JS
+            const double a = std::clamp(p.life * 2, 0.0, 1.0) * p.alpha;
+            DrawRectangleRec({static_cast<float>(p.x * TS - p.size / 2), static_cast<float>(p.y * TS - p.size / 2), static_cast<float>(p.size), static_cast<float>(p.size)},
+                             Color{static_cast<unsigned char>(p.color >> 16), static_cast<unsigned char>(p.color >> 8), static_cast<unsigned char>(p.color),
+                                   static_cast<unsigned char>(std::lround(255 * a))});
+        }
         for (const Float& fl : floats) {
             const unsigned char a = static_cast<unsigned char>(255 * std::clamp(fl.life * 1.5, 0.0, 1.0));
             const int fx = static_cast<int>(fl.x * TS) - MeasureText(fl.text.c_str(), 12) / 2, fy = static_cast<int>(fl.y * TS);
@@ -436,10 +516,12 @@ int main(int argc, char** argv) {
             menu.tab = 2;
         }
         const bool wasOpen = menu.open;
-        if (const std::string m = menu.draw(eco, d, base); !m.empty()) {
+        if (const std::string m = menu.draw(eco, d, base, game->prog); !m.empty()) {
             say(m);
             save();  // vente, fonte, achat
         }
+        if (menu.action == MenuAction::Sell) play(Sfx::Sell);
+        if (menu.action == MenuAction::Smelt || menu.action == MenuAction::Buy) play(Sfx::Buy);
         if (wasOpen && !menu.open) save();
         if (toastT > 0) {
             const int tw = MeasureText(toast.c_str(), 18);
@@ -460,6 +542,12 @@ int main(int argc, char** argv) {
     }
 
     save();
+    if (gSynth) {
+        StopAudioStream(stream);
+        UnloadAudioStream(stream);
+        gSynth = nullptr;
+        CloseAudioDevice();
+    }
     game.reset();  // libère les textures avant de fermer la fenêtre
     CloseWindow();
     return 0;
