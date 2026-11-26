@@ -17,6 +17,7 @@ struct Settings {
     double music = .45, sfx = .8;
     bool vib = true;
     std::string stick = "dyn";
+    bool shake = true;  // secousses de l'écran ; propre à la version C++, écrit dans le JSON seulement quand il est coupé
 };
 
 struct Progress {  // ce qui n'appartient ni à l'économie ni au monde

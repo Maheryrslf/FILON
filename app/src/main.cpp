@@ -423,8 +423,8 @@ int main(int argc, char** argv) {
             camSX += (tx - camSX) * (1 - std::exp(-dt * 10));
             camSY += (ty - camSY) * (1 - std::exp(-dt * 6));
         }
-        double shakeX, shakeY;  // les secousses déplacent l'image, pas la caméra amortie
-        fx.shakeOffset(shakeX, shakeY);
+        double shakeX = 0, shakeY = 0;  // les secousses déplacent l'image, pas la caméra amortie ; coupées dans les Options
+        if (game->prog.set.shake) fx.shakeOffset(shakeX, shakeY);
         const double camX = camSX + shakeX, camY = camSY + shakeY;
 
         BeginDrawing();
