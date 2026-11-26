@@ -288,7 +288,7 @@ Prospecteur (+8 % de valeur), Filon double (+6 % de chance), Turbo (+6 % de fora
 ## 9. Son (L301–349)
 - Effets : oscillateurs (carré, triangle, dent de scie, sinus) avec enveloppe exponentielle et glissement de fréquence, plus bruit blanc filtré passe-bas. Table des 15 effets L318–331.
 - Musique : grille Am–F–C–G (`PROG` L336), 16 pas par accord, 0.22 s par pas (0.15 s pendant un gardien) ; basse sinus tous les 4 pas, arpèges triangle.
-- C++ : flux audio raylib (`AudioStream`) rempli par un petit synthétiseur maison.
+- C++ (`core/synth`) : synthétiseur maison, sans fichier audio. Ondes sinus, carrée et en dents de scie (adoucies par PolyBLEP), triangle ; rampes exponentielles de fréquence et de volume (jusqu'à 0.0001) ; bruit blanc de 0.3 s joué sans boucle, filtré en passe-bas biquadratique (résonance 1 dB). Bus musique ×0.5 et effets ×0.6, sortie bornée à ±1. Les 14 bruitages et la musique (grille, arpèges, basse, version combat à 0.15 s par pas) reprennent les valeurs JS ; le jeu les déclenche aux mêmes moments (choc de foret bloqué : au plus toutes les 2 s). Rendu dans le fil audio de raylib (`SetAudioStreamCallback`, 44,1 kHz, mono). Volumes dans l'onglet Options du menu de la base, enregistrés dans la sauvegarde (`set.music`, `set.sfx`). Test `synthetiseur` : attaque, extinction, fréquence, glissement, bruit, musique, coupure.
 
 ## 10. Sauvegarde (L283–299)
 JSON, clé `filon-save-v1`, version `v:1`.

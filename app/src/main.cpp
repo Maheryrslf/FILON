@@ -26,6 +26,7 @@
 #include "filon/core/nuggets.hpp"
 #include "filon/core/random.hpp"
 #include "filon/core/save.hpp"
+#include "filon/core/synth.hpp"
 #include "filon/core/texture.hpp"
 #include "raylib.h"
 #include "rlgl.h"
@@ -103,6 +104,11 @@ struct Float {  // chiffre qui monte au-dessus d'un coup porté
     double life;
 };
 
+Synth* gSynth = nullptr;  // lu par le fil audio de raylib
+void audioCallback(void* buffer, unsigned int frames) {
+    if (gSynth) gSynth->render(static_cast<float*>(buffer), static_cast<int>(frames));
+}
+
 std::uint32_t randomSeed() { return static_cast<std::uint32_t>(GetRandomValue(0, 2147483646)); }
 
 SaveData freshSave(std::uint32_t seed) {
@@ -137,6 +143,22 @@ int main(int argc, char** argv) {
     SetExitKey(KEY_NULL);  // Échap ouvre le menu de la base
     SetTargetFPS(60);
 
+    // son : synthétisé à la volée par le fil audio (rien pendant les captures d'essai)
+    Synth synth(44100, randomSeed());
+    AudioStream stream{};
+    if (!capture) {
+        InitAudioDevice();
+        if (IsAudioDeviceReady()) {
+            SetAudioStreamBufferSizeDefault(1024);
+            stream = LoadAudioStream(44100, 32, 1);
+            gSynth = &synth;
+            SetAudioStreamCallback(stream, audioCallback);
+            PlayAudioStream(stream);
+        }
+    }
+    auto play = [&](Sfx s) {
+        if (gSynth) synth.sfx(s);
+    };
     std::string toast;
     double toastT = 0;
     auto say = [&](const std::string& m, double t = 2.8) {
@@ -162,7 +184,7 @@ int main(int argc, char** argv) {
         if (!path.empty() && !writeFileAtomic(path, toJson(game->snapshot()))) say("Impossible d'enregistrer la partie dans " + path, 4);
     };
     BaseMenu menu;
-    double camX = 0, camY = 0, time = 0, lastFull = -9, lastSave = 0, confirmWorld = -9;
+    double camX = 0, camY = 0, time = 0, lastFull = -9, lastSave = 0, confirmWorld = -9, lastBump = -9;
     bool camInit = false;
     int frame = 0;
     std::vector<Float> floats;
@@ -287,6 +309,22 @@ int main(int argc, char** argv) {
             }
             if (gained) say("Niveau " + std::to_string(eco.lvl) + " ! +" + std::to_string(gained) + " point de talent");
             if (!cev.killedFoes.empty() || cev.bossKilled >= 0) save();
+            // bruitages, aux mêmes moments que dans la version JS
+            if (ev.digSound) play(Sfx::Dig);
+            if (!cev.hits.empty()) play(Sfx::Hit);
+            if (!cev.killedFoes.empty()) play(Sfx::Kill);
+            if (cev.bossWoke >= 0) play(Sfx::Roar);
+            if (cev.bossKilled >= 0) play(Sfx::Win);
+            if (cev.bossLanded || ev.landImpact > 0) play(Sfx::Land);
+            if (cev.shots) play(Sfx::Shoot);
+            if (ev.damage > 0) play(Sfx::Hurt);
+            if (ev.strandedFuel || ev.strandedHull) play(Sfx::Fail);
+            if (ev.hatchToggled || ev.armHooked) play(Sfx::Bump);
+            if (ev.bump && time - lastBump > 2) {  // foret bloqué par la roche mère ou un sceau
+                lastBump = time;
+                play(Sfx::Bump);
+            }
+            if (gained) play(Sfx::Lvl);
             Progress& pr = game->prog;
             pr.play += dt;
             if (ev.depth > pr.maxDepth) pr.maxDepth = ev.depth;
@@ -299,7 +337,10 @@ int main(int argc, char** argv) {
                 say("Chute rude : garde le propulseur appuyé pour freiner, ou accroche le bras.");
             }
             game->view.sync(game->terrain);
-            if (const int lv = addXp(eco, game->terrain.xpGained)) say("Niveau " + std::to_string(eco.lvl) + " ! +" + std::to_string(lv) + " point de talent");
+            if (const int lv = addXp(eco, game->terrain.xpGained)) {
+                say("Niveau " + std::to_string(eco.lvl) + " ! +" + std::to_string(lv) + " point de talent");
+                play(Sfx::Lvl);
+            }
             game->terrain.xpGained = 0;
             for (const FreedOre& f : game->terrain.freed) {  // une pépite jaillit de chaque filon dégagé (deux avec Filon double)
                 const int n = 1 + (game->rng.next() < .06 * eco.tal[LUCK] ? 1 : 0);
@@ -316,9 +357,11 @@ int main(int argc, char** argv) {
                 ++eco.cargo[id - ORE_FIRST];
                 say(std::string("+1 ") + ORES[id - ORE_FIRST].name, 1.2);
             }
+            if (!up.collected.empty()) play(Sfx::Ore);
             if (up.cargoFull && time - lastFull > 2.5) {
                 lastFull = time;
                 say("Soute pleine : remonte vendre ou fondre.");
+                play(Sfx::Bump);
             }
             if (ev.strandedFuel) say("Panne sèche ! Remorquée à la base, la moitié de la soute est perdue.");
             if (ev.strandedHull) say("Foreuse détruite ! Rapatriée à la base, la soute est perdue.");
@@ -331,6 +374,10 @@ int main(int argc, char** argv) {
             }
         }
         toastT -= dt;
+        if (gSynth) {  // volumes du menu Options, musique plus rapide pendant un combat de gardien
+            synth.setVolumes(game->prog.set.music, game->prog.set.sfx);
+            synth.music(std::any_of(game->creatures.bosses.begin(), game->creatures.bosses.end(), [](const Boss& b) { return b.active; }));
+        }
         if (!menu.open) {
             for (Float& fl : floats) {
                 fl.y -= .9 * dt;
@@ -436,10 +483,12 @@ int main(int argc, char** argv) {
             menu.tab = 2;
         }
         const bool wasOpen = menu.open;
-        if (const std::string m = menu.draw(eco, d, base); !m.empty()) {
+        if (const std::string m = menu.draw(eco, d, base, game->prog); !m.empty()) {
             say(m);
             save();  // vente, fonte, achat
         }
+        if (menu.action == MenuAction::Sell) play(Sfx::Sell);
+        if (menu.action == MenuAction::Smelt || menu.action == MenuAction::Buy) play(Sfx::Buy);
         if (wasOpen && !menu.open) save();
         if (toastT > 0) {
             const int tw = MeasureText(toast.c_str(), 18);
@@ -460,6 +509,12 @@ int main(int argc, char** argv) {
     }
 
     save();
+    if (gSynth) {
+        StopAudioStream(stream);
+        UnloadAudioStream(stream);
+        gSynth = nullptr;
+        CloseAudioDevice();
+    }
     game.reset();  // libère les textures avant de fermer la fenêtre
     CloseWindow();
     return 0;
