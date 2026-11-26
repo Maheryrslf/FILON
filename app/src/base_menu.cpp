@@ -195,6 +195,20 @@ std::string BaseMenu::draw(Economy& e, Drill& d, bool atBase, Progress& prog) {
         };
         slider("Musique", prog.set.music);
         slider("Effets", prog.set.sfx);
+        {  // case à cocher : secousses de l'écran (à couper si elles gênent)
+            const Rectangle line{x, y, cw, 44}, box{x + cw - 38, y + 11, 22, 22};
+            const bool hover = CheckCollisionPointRec(GetMousePosition(), line);
+            row(x, y, cw, 44);
+            DrawText("Secousses de l'écran", static_cast<int>(x + 12), static_cast<int>(y + 13), 18, FG);
+            DrawRectangleRounded(box, .25f, 4, prog.set.shake ? ACCENT : Color{0, 0, 0, 150});
+            DrawRectangleRoundedLinesEx(box, .25f, 4, 2, hover ? FG : LINE);
+            if (prog.set.shake) {  // coche
+                DrawLineEx({box.x + 5, box.y + 11}, {box.x + 9, box.y + 16}, 3, INK);
+                DrawLineEx({box.x + 9, box.y + 16}, {box.x + 17, box.y + 6}, 3, INK);
+            }
+            if (hover && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) prog.set.shake = !prog.set.shake;
+            y += 50;
+        }
         int beaten = 0;
         for (int b : prog.boss) beaten += b != 0;
         const int min = static_cast<int>(prog.play / 60);

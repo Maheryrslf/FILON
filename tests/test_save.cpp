@@ -87,9 +87,12 @@ int main() {
     m.fuel.reset();
     m.mask.clear();
     m.nuggets.push_back({18, -0.125, 2.675, 3, 4});
+    m.prog.set.shake = false;
     const auto back = fromJson(toJson(m));
     check(back && toJson(*back) == toJson(m), "aller-retour");
     check(back && !back->pos && !back->fuel && back->mask.empty() && back->nuggets.back().x == -0.13, "valeurs absentes et arrondi négatif");
+    check(back && !back->prog.set.shake && toJson(m).find(",\"shake\":false}") != std::string::npos, "secousses coupées gardées");
+    check(s->prog.set.shake && toJson(*s).find("shake") == std::string::npos, "secousses actives par défaut, champ absent");
 
     // nombres écrits comme String(v) en JS
     const std::pair<double, const char*> nums[] = {{1e21, "1e+21"}, {1e20, "100000000000000000000"}, {1e-7, "1e-7"}, {1e-6, "0.000001"},

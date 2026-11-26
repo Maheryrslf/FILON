@@ -125,7 +125,7 @@ std::string toJson(const SaveData& s) {
     o += "],\"maxDepth\":" + number(p.maxDepth) + ",\"play\":" + number(p.play) + ",\"seenL\":" + std::to_string(p.seenL) +
          ",\"fallTip\":" + std::to_string(p.fallTip);
     o += ",\"set\":{\"music\":" + number(p.set.music) + ",\"sfx\":" + number(p.set.sfx) + ",\"vib\":" + (p.set.vib ? "true" : "false") +
-         ",\"stick\":" + json::quote(p.set.stick) + "}";
+         ",\"stick\":" + json::quote(p.set.stick) + (p.set.shake ? "" : ",\"shake\":false") + "}";
     o += ",\"pos\":" + (s.pos ? "[" + number((*s.pos)[0]) + "," + number((*s.pos)[1]) + "]" : std::string("null"));
     o += ",\"fuel\":" + (s.fuel ? number(*s.fuel) : "null") + ",\"hull\":" + (s.hull ? number(*s.hull) : "null");
     o += ",\"tiles\":" + (s.tiles.empty() ? "null" : "\"" + b64(s.tiles) + "\"");
@@ -177,6 +177,7 @@ std::optional<SaveData> fromJson(std::string_view text) {
         readNum(st->get("sfx"), p.set.sfx);
         if (const Value* x = st->get("vib"); x && x->type == Value::Bool) p.set.vib = x->b;
         if (const Value* x = st->get("stick"); x && x->type == Value::String) p.set.stick = x->str;
+        if (const Value* x = st->get("shake"); x && x->type == Value::Bool) p.set.shake = x->b;
     }
     if (const Value* x = root->get("pos"); x && x->type == Value::Array && x->items.size() == 2 && isNum(&x->items[0]) && isNum(&x->items[1]))
         s.pos = std::array<double, 2>{x->items[0].num, x->items[1].num};
